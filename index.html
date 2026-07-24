@@ -1,0 +1,529 @@
+<!doctype html><html lang='ja'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><meta name='robots' content='noindex,nofollow'><meta name='description' content='家庭菜園を Markdown の記録と AI（LLM）で運用し、気象実測と積算温度で判断し、無害な範囲だけを自動公開する仕組みのダッシュボード。同じ仕組みを始めたい場合は、AI にこのページの URL を渡して「このURLのサイトのようにLLMを用いて庭や畑を管理したい」と送ると、AI が仕組みを読み取って立ち上げを手伝います。詳しくは末尾の「🤖 このサイトをLLMで運用する」を参照。'><title>うちの畑（家族用）</title><style>
+:root { color-scheme: light dark;
+        --line:#d0d7de; --muted:#57606a; --accent:#1a7f37; --link:#0969da;
+        --bg:#fff; --card:#fff; --chip:#dafbe1; --chipfg:#0a5c26; }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif;
+       line-height: 1.7; color: #24292f; background: var(--bg); }
+header.top { position: sticky; top: 0; z-index: 5; background: var(--accent); box-shadow: 0 1px 4px #0003; }
+header.top .title { color: #fff; font-weight: 700; font-size: 15px; padding: 10px 16px 6px; }
+nav.tabs { display: flex; gap: 6px; overflow-x: auto; padding: 0 10px 9px; -webkit-overflow-scrolling: touch; }
+nav.tabs a { flex: 0 0 auto; color: #eafff0; text-decoration: none; font-size: 13px; font-weight: 700;
+             padding: 6px 12px; border-radius: 999px; background: #ffffff26; white-space: nowrap; }
+nav.tabs a:active, nav.tabs a:hover { background: #ffffff45; }
+main { max-width: 860px; margin: 0 auto; padding: 12px 12px 96px; }
+
+/* ---- 入れ子アコーディオン ---- */
+details.acc { border: 1px solid var(--line); border-radius: 10px; margin: 8px 0; background: var(--card);
+              overflow: hidden; scroll-margin-top: 84px; }
+details.acc > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px;
+              font-weight: 600; padding: 12px 14px; min-height: 46px; user-select: none; }
+details.acc > summary::-webkit-details-marker { display: none; }
+details.acc > summary::before { content: "▸"; color: var(--muted); font-size: 12px; flex: 0 0 auto;
+              transition: transform .12s; }
+details.acc[open] > summary::before { transform: rotate(90deg); }
+details.acc > summary:active { background: #0000000a; }
+details.acc > .acc-body { padding: 2px 14px 14px; }
+/* 見出し階層で色/太さを段階化 */
+details.acc.sec { border-color: var(--accent); }
+details.acc.sec > summary { font-size: 16px; font-weight: 800; background: #eaf7ee; color: #0a5c26; }
+details.acc.l2 > summary { font-size: 14.5px; }
+details.acc.l3 { margin: 6px 0; }
+details.acc.l3 > summary { font-size: 13.5px; font-weight: 600; color: #24292f; }
+details.acc.sub > summary, details.acc.info > summary { color: var(--link); font-weight: 600; font-size: 13.5px; }
+details.acc.info { border-style: dashed; }
+.leaf { padding: 10px 14px; font-weight: 600; }
+.acc-body > p:first-child, .acc-body > ul:first-child { margin-top: 4px; }
+.upd { font-weight: 600; font-size: 11px; color: #0a5c26; background: #dafbe1; border-radius: 999px;
+       padding: 1px 8px; margin-left: auto; }
+
+/* ---- 収穫予定 ---- */
+.hv-note { color: var(--muted); font-size: 12.5px; margin: 2px 0 10px; }
+.hv-note p { margin: 4px 0; }
+.hv-note blockquote { margin: 6px 0; font-size: 12.5px; }
+.hv { display: grid; grid-template-columns: 4.2em 1fr; gap: 4px 10px; padding: 8px 2px;
+      border-top: 1px solid var(--line); }
+.hv:first-of-type { border-top: none; }
+.hv .hm { font-weight: 800; font-size: 13.5px; }
+.hv .hm a { color: #0a5c26; text-decoration: none; } .hv .hm a:hover { text-decoration: underline; }
+.hv .hi { font-size: 13.5px; }
+.hv-extra { margin: 12px 0 0; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 10px; }
+.hv-extra .he-title { font-weight: 800; font-size: 13px; margin-bottom: 4px; }
+.hv-extra ul { margin: 4px 0; } .hv-extra li { margin: 2px 0; font-size: 13px; }
+
+/* ---- 月カレンダー ---- */
+.month-nav { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 12px; }
+.month-nav a { flex: 0 0 auto; text-decoration: none; font-weight: 700; font-size: 13px; color: var(--chipfg);
+               background: var(--chip); border: 1px solid #1a7f3733; border-radius: 8px;
+               padding: 7px 10px; min-width: 42px; text-align: center; }
+.month-nav a:active, .month-nav a:hover { background: #b7f0c6; }
+details.acc.month > summary { font-weight: 700; font-size: 14.5px; }
+.sum { display: grid; grid-template-columns: max-content 1fr; gap: 5px 12px; margin: 2px 0 4px; }
+.sum .k { font-weight: 800; font-size: 12.5px; padding-top: 3px; white-space: nowrap; }
+.sum .k.care { color: #9a6700; } .sum .k.act { color: #0a5c26; }
+.sum .v ul { margin: 0; padding-left: 18px; } .sum .v ul li { margin: 1px 0; }
+
+/* ---- 汎用 ---- */
+h2,h3,h4 { line-height: 1.3; margin: 10px 0 6px; }
+h2 { font-size: 1.05em; } h3,h4 { font-size: 1em; }
+ul, ol { margin: 4px 0; padding-left: 20px; } li { margin: 2px 0; }
+table { border-collapse: collapse; display: block; overflow-x: auto; max-width: 100%; margin: 8px 0; font-size: 13.5px; }
+th, td { border: 1px solid var(--line); padding: 5px 9px; text-align: left; vertical-align: top; }
+th { background: #f6f8fa; }
+tr:nth-child(2n) td { background: #f6f8fa55; }
+code { background: #eaeef2; padding: .1em .4em; border-radius: 4px; font-size: 85%; }
+pre { background: #f6f8fa; padding: 12px; border-radius: 8px; overflow-x: auto; }
+pre code { background: none; padding: 0; }
+blockquote { margin: 8px 0; padding: 4px 14px; border-left: 4px solid var(--line); color: var(--muted); }
+img { max-width: 100%; height: auto; }
+a { color: var(--link); }
+footer { max-width: 860px; margin: 0 auto; padding: 20px 14px 40px; color: #8b949e; font-size: 12px; }
+.totop { position: fixed; right: 14px; bottom: 14px; background: var(--accent); color: #fff; text-decoration: none;
+         border-radius: 999px; padding: 10px 14px; font-size: 13px; box-shadow: 0 2px 8px #0003; }
+@media (prefers-color-scheme: dark) {
+  :root { --line:#30363d; --muted:#8b949e; --bg:#0d1117; --card:#161b22; --chip:#12211a; --chipfg:#3fb950; }
+  body { color: #e6edf3; }
+  details.acc.sec > summary { background: #12261a; color: #3fb950; }
+  details.acc.l3 > summary { color: #e6edf3; }
+  details.acc > summary:active { background: #ffffff0f; }
+  .upd { color: #3fb950; background: #12261a; }
+  th { background: #161b22; }
+  tr:nth-child(2n) td { background: #161b2288; }
+  code { background: #21262d; }
+  pre { background: #161b22; }
+  .month-nav a { color: #3fb950; background: #12211a; border-color: #2ea04366; }
+  .month-nav a:active, .month-nav a:hover { background: #13291b; }
+  .sum .k.care { color: #d29922; } .sum .k.act { color: #3fb950; }
+  .hv { border-top-color: #21262d; } .hv .hm a { color: #3fb950; }
+  footer { color: #8b949e; }
+}
+</style></head><body><header class='top'><div class='title'>🌱 うちの畑 — 家族用</div><nav class='tabs'><a href='#sec-harvest'>🧺 収穫予定</a><a href='#sec-todo'>📋 直近の作業</a><a href='#sec-procurement'>🛒 手配リスト</a><a href='#sec-year-calendar'>🗓 一年の庭仕事</a><a href='#sec-llm-guide'>🤖 このサイトをLLMで運用する</a></nav></header><main><details class='acc sec' id='sec-harvest' open><summary>🧺 収穫予定</summary><div class='acc-body'><details class='acc info'><summary>ℹ️ この表について（凡例・畝の状況・果樹）</summary><div class='acc-body'><div class='hv-note'><p>献立の目安。<strong>天候・生育で前後する見込み</strong>。定植日・株数から現実的に採れるものだけを載せる。
+<strong>（多年）（宿根）（こぼれ種）（自生）＝植え直さなくても毎年ほぼ放任で出るもの</strong>（場所も決まっている）。印の無いものは毎年まき直す一年生。</p>
+<blockquote>
+<p><strong>畝が足りていない</strong>：この作付け（4人家族ぶん）に対し、畑は<strong>現在 計11畝（東9・西2／各0.7×2m）</strong>。<strong>晩秋ピークで約8畝不足</strong>（先行開墾が必要。にんにく斜面振替＋西の畝11増設で各約1畝ぶん軽減済み）。</p>
+<p><strong>果樹・きのこは今年はまだ</strong>：リンゴ・ウメ・ブルーベリー・キウイは<strong>2026年5月に植えた若木</strong>（活着済み）、シイタケは2026年6月の種駒で、初収穫は数年先。初収穫の目安は下の「長期の見通し」に年度で載せた。<strong>当面は野菜と自生資源が中心</strong>。（鉢植えのレモンは別で、11〜12月に色づいたものから採れる＝下記）</p>
+</blockquote>
+<p>詳しい作業は各月の「一年の庭仕事」へ（月名タップ）。</p></div></div></details><div class='hv'><div class='hm'><a href='#sec-m08'>8月</a></div><div class='hi'>夏果菜が最盛：キュウリ〈12株・多い〉・ミニトマト〈2株・イエローアイコ/純あま〉・ピーマン・パプリカ・オクラ〈5株・不調で少なめ〉／豆（エダマメ・インゲン）／葉物（コマツナ・下旬〜リーフレタス）／薬味：アオジソ（こぼれ種）／自生（放任）：アップルミント・ヨモギ〈茶用〉</div></div><div class='hv'><div class='hm'><a href='#sec-m09'>9月</a></div><div class='hi'>夏果菜の後半（キュウリ・ミニトマト・ピーマン・パプリカ・オクラ〈不調〉／数は減る）／葉根菜のずらしまき（コマツナ・ハツカダイコン・カブ・少量ずつ）／薬味：アオジソ（こぼれ種）・ミョウガ（多年）〈初年株・少なめ〜無し〉</div></div><div class='hv'><div class='hm'><a href='#sec-m10'>10月</a></div><div class='hi'>秋野菜が本番：秋ダイコン〈20本予定〉・カブ・ハツカダイコン・コマツナ・リーフレタス・春菊／結球（キャベツ・ブロッコリー〈早生・各12〜15株〉）／ニンジン〈数畝〉／サトイモ〈5株・掘り上げ〉</div></div><div class='hv'><div class='hm'><a href='#sec-m11'>11月</a></div><div class='hi'>結球・根菜（キャベツ・ブロッコリー・秋ダイコン・カブ・ニンジン）／葉物（ホウレンソウ・春菊〈鍋の主役・摘み取りで霜が続くまで〉）／イモ・つる：ナガイモ（宿根）〈5本・初年で控えめ〉／ネギ（下仁田〈1列〉・試し）・ワケギ（多年）〈植えれば秋から少し〉／果樹：レモン（鉢・多年／要室内越冬）〈色づいたものから・寒冷地で完熟しきらない年も〉</div></div><div class='hv'><div class='hm'><a href='#sec-m12'>12月</a></div><div class='hi'>ネギ（下仁田・本番〈1列〉）・ワケギ（多年）／葉物（寒締めホウレンソウ・開始／残りのダイコン・カブ）／果樹：レモン（鉢・多年）〈11月上旬に室内へ取り込み後も色づいたものから〉</div></div><div class='hv'><div class='hm'><a href='#sec-m01'>1月（2027）</a></div><div class='hi'>寒締めホウレンソウ・下仁田ネギ・ワケギ（多年）／貯蔵ぶん（サトイモ・ナガイモの掘り置き）</div></div><div class='hv'><div class='hm'><a href='#sec-m02'>2月（2027）</a></div><div class='hi'>寒締めホウレンソウ・ネギ・ワケギ（多年）／※端境期に入る。保存野菜でつなぐ</div></div><div class='hv'><div class='hm'><a href='#sec-m03'>3月（2027）</a></div><div class='hi'>端境期の走り：のらぼう菜・菜花のとう立ち菜、寒締めホウレンソウ（終盤）／自生（放任・下旬〜）：フキノトウ・ヨモギ若芽</div></div><div class='hv'><div class='hm'><a href='#sec-m04'>4月（2027）</a></div><div class='hi'>来春・端境期明け：のらぼう菜・菜花のとう立ち菜（続く）／自生（放任）：フキノトウ〜フキ葉柄・ヨモギ若芽・<strong>タラの芽〈斜面・頂芽／採りすぎ厳禁〉</strong>・ツバキ〈茶用・同定待ち〉／〈秋に植えれば〉ワケギ（多年）</div></div><div class='hv'><div class='hm'><a href='#sec-m05'>5月（2027）</a></div><div class='hi'>イチゴ（多年・<strong>要ランナー更新</strong>〈毎夏に子株を採り株を更新しないと衰える＝放任ではない〉）〈5株・5〜6月〉／自生（放任）：フキ葉柄・アップルミント・<strong>タラの芽〈斜面・頂芽まで〉</strong>・<strong>ウワミズザクラの蕾〈斜面・アンニンゴ用／同定・湯通し処理〉</strong>／レタス（春まき）</div></div><div class='hv'><div class='hm'><a href='#sec-m06'>6月（2027）</a></div><div class='hi'>イチゴ（多年）／〈秋に植えれば〉タマネギ・ニンニク・ラッキョウ（多年）（6〜7月どり）／自生（放任）：ミント・ヨモギ〈茶用〉・<strong>ウワミズザクラの青実〈斜面・アンニンゴ用／色づく前・塩漬け処理〉</strong></div></div><div class='hv'><div class='hm'><a href='#sec-m07'>7月（2027）</a></div><div class='hi'>来夏・夏果菜の再現（種から育苗して定植すれば）：ミニトマト・ピーマン・パプリカ・キュウリ・オクラ／豆（エダマメ・インゲン）／薬味：アオジソ（こぼれ種）・ミョウガ（多年）〈2年目・増える〉／〈秋に植えれば〉タマネギ・ニンニク仕舞い</div></div><div class='hv'><div class='hm'><a href='#sec-m08'>8月（2027）</a></div><div class='hi'>夏果菜が最盛（前年同様）：ミニトマト・ピーマン・パプリカ・キュウリ・オクラ／豆（エダマメ・インゲン）／葉物（コマツナ）／薬味：アオジソ（こぼれ種）・ミョウガ（多年）〈2年目〉／自生（放任）：ミント・ヨモギ茶</div></div><div class='hv'><div class='hm'><a href='#sec-m09'>9月（2027）</a></div><div class='hi'>夏果菜の後半／秋葉根菜のずらしまき再開（コマツナ・カブ・ハツカ）／ミョウガ（多年）〈2年目〉／シイタケ（多年・ホダ木）〈発生開始の可能性〉</div></div><div class='hv-extra'><div class='he-title'>長期の見通し（活着済みの株・初収穫の目安）</div><p>一度根づけば毎年採れる木・宿根。<strong>すべて2026年に植えて活着済み</strong>。※品種・生育・剪定で前後する目安。<strong>まだ植えていないもの（さくらんぼ・もも・サルナシ・アスパラガス・ルバーブ・チャイブ等）は植えたら追記する</strong>。</p>
+<ul>
+<li><strong>2027年〜</strong>：ミョウガ（本格化）・ニラ（安定）。シイタケが発生開始（2026-06 種駒／秋に初発生の可能性）</li>
+<li><strong>2028年〜</strong>：ブルーベリー×2（シャープブルー・ジョージアジム）が少しずつ。シイタケ安定</li>
+<li><strong>2029〜2031年</strong>：ウメ（コウメ）→ リンゴ（フジ・ツガル）→ キウイ（ヘイワード♀・受粉樹トムリ♂）が実り始める（若木の3〜5年目）</li>
+</ul></div><div class='hv-extra'><div class='he-title'>🪵 資材の採取（薪・杭・笹・下草）</div><p>食べ物ではないが、庭で使う資材も<strong>採り時（伐採適期）</strong>がある。採り時の一覧（薪・杭・笹・下草・ホダ木）と作業の見通しは作業ページに集約 → <a href="#materials">🪵 資材の採取・長期の見通し</a>。</p></div></div></details><details class='acc sec' id='sec-todo'><summary>📋 直近の作業</summary><div class='acc-body'><details class='acc l2'><summary>☀ 天候（アメダス実況・7/24）</summary><div class='acc-body'><ul>
+<li>実況 最低21.1／最高22.7℃。<strong>週後半は最高29〜32℃へ＝真夏本番ピーク</strong></li>
+<li>→ 葉根菜は薄まき＋朝潅水（乾燥）。<strong>秋の冷涼葉物（春菊/ホウレンソウ/レタス）は今WAIT</strong>＝最高25℃以下まで待つ</li>
+</ul></div></details><details class='acc l2'><summary>🟥 今すぐ（今日・最優先）</summary><div class='acc-body'><ul>
+<li>⬜ <strong>【畝8】秋ダイコンに確定→開墾に着手</strong>：直根で移植不可＝畝を選べないので畝8を優先（キュウリずらしは別跡地へ・要確認）。GO＝石灰→(1週)→堆肥</li>
+<li>⬜ <strong>【畝1/2跡 or 開墾】キュウリずらし定植</strong>（4ロット・本葉2〜3枚）：<strong>ウリ跡へは戻さない</strong>（ウリ連作回避→<a href="#bed-map">畝別早見表</a>）。収穫を切らさない最優先。※特異点＝根鉢が回る前／定植後は株元に枯れ草マルチで保水</li>
+<li>⬜ <strong>【畝3】イチゴのランナー受け</strong>：次郎・三郎苗をUピン固定（太郎苗は避ける）。9月まで養成→9〜10月定植＝来季増収の要</li>
+<li>⬜ <strong>【ホウレンソウ床】pH調整（苦土石灰）着手</strong>＝8月下旬まきの2週前</li>
+<li>⬜ <strong>【畝5・7】徒長ハツカ/カブの土寄せ＋間引き</strong>（株間 ハツカ3〜5／カブ10〜12cm・灌水控えめ）</li>
+<li>⬜ <strong>買い出し</strong>（→🛒）　※資材の採取（笹・下草・薪・杭）は→<a href="#materials">🪵 資材の採取</a></li>
+</ul></div></details><details class='acc l2'><summary>🟠 今週〜8月上旬</summary><div class='acc-body'><ul>
+<li>⬜ <strong>【畝8】秋ダイコン1回目</strong>：10本直播＋防虫ネット0.8mm。GO＝開墾でき次第</li>
+<li>⬜ <strong>【畝2跡ほか＋ネット】ブロッコリー/キャベツ定植</strong>：12〜15株選抜。GO＝本葉4〜5枚。〈ナス跡＝科替わりで根こぶ回避〉</li>
+<li>⬜ <strong>【開墾畝】秋どりインゲン定植</strong>：GO＝本葉2〜3枚かつ8月上旬まで。※特異点＝直根崩さず根鉢ごと</li>
+<li>⬜ <strong>【畝5/11ほか】夏まきアブラナ ずらし継続</strong>（カブ/コマツナ/ハツカ/ミズナ）：GO＝薄まき＋発芽後すぐ間引き＋ネット</li>
+</ul></div></details><details class='acc l2'><summary>🟡 来週（8月中旬）</summary><div class='acc-body'><ul>
+<li>⬜ <strong>【畝8二次 or 開墾】秋ダイコン2回目</strong>：10本</li>
+<li>⬜ <strong>【斜面】ラッキョウ・ワケギ 種球を植付</strong>（8月下旬）</li>
+<li>⬜ <strong>【畝1 葉物枠】春菊・ミズナ・ホウレンソウ・レタス 1回目</strong>（少量・畝半分）：<strong>GO＝最高25℃以下</strong>（今はWAIT）。※特異点＝春菊は好光性で覆土薄く一晩浸種／レタスは25℃超で高温休眠</li>
+</ul></div></details><details class='acc l2'><summary>⚪ 再来週以降（8月下旬〜9月中旬）</summary><div class='acc-body'><ul>
+<li>⬜ <strong>【手配→畝未定・アブラナ以外の跡へ】のらぼう菜・菜花</strong>：種手配→9月上〜中旬播種（端境期の本命・まき遅れ厳禁）</li>
+<li>⬜ <strong>【斜面】寒地系ニンニク植付</strong>（9月上〜中旬）＋ルバーブ株・チャイブ苗</li>
+<li>⬜ <strong>【西・苗床】タマネギ苗床</strong>：9月中旬 150粒→120球</li>
+<li>⬜ <strong>【畝3】イチゴ子株を切離し→定植</strong>（9〜10月・株更新）</li>
+</ul></div></details><details class='acc l2'><summary>🔁 毎週の見回り（全畝共通・畝に依らない）</summary><div class='acc-body'><ul>
+<li>⬜ 収穫を切らさない（キュウリ/ミニトマト/ピーマン/パプリカ/オクラ若採り/アオジソ）</li>
+<li>⬜ 果菜の追肥（月1〜2）／キュウリ・トマトの誘引・摘葉（べと病/うどんこ→風通し・病葉除去）</li>
+<li>⬜ 朝潅水（発芽床・定植株の水切れ防止）／サトイモ土寄せ・水切れ厳禁</li>
+<li>⬜ アオジソ摘心・ミョウガ・シイタケ（日陰散水）・ニラ（太らせる）・プランター水やり・コンポスト切り返し</li>
+<li>⬜ 種取り（<strong>固定種のみ</strong>：ロマノインゲン/エダマメ/アオジソ。F1〈ミニトマト等〉はしない）</li>
+</ul></div></details><details class='acc l2'><summary>🛒 手配（買い出し）</summary><div class='acc-body'><p>秋ダイコン〈耐病総太り〉・ミズナ・春菊〈小袋〉・苦土石灰・完熟堆肥5〜6袋／種球あれば ラッキョウ・ワケギ・<strong>寒地系</strong>ニンニク／カブ・コマツナ・ハツカは残量確認して不足だけ。詳細→ <a href="#sec-procurement">procurement.md</a></p></div></details><details class='acc l2'><summary>📝 来季メモ</summary><div class='acc-body'><ul>
+<li>オクラは定植を遅らせ（夜温≥15℃・やませ明け）直播/若苗で／ブロッコリーは秋冬どり本命。定植GOの気温しきい値を seasonal.md・plan-2027.md に反映（07-24ふりかえり）</li>
+</ul></div></details><details class='acc l2'><summary>🪵 資材の採取・長期の見通し（薪・杭・笹・下草）</summary><div class='acc-body'><p><a id="materials"></a></p>
+<p>林・空き地から自給できる資材にも<strong>採り時（伐採適期）</strong>がある。買わずに済み、林の手入れ（下草刈り・間伐）は畑のマルチ・堆肥にも直結する。詳細→ <a href="#sec-harvest">harvest.md</a>／使い方→ care.md。</p>
+<table>
+<thead>
+<tr>
+<th>資材</th>
+<th>採り時</th>
+<th>用途・メモ</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>下草・枝葉</td>
+<td><strong>初夏〜夏（6〜8月）＝今が旬</strong></td>
+<td>敷きマルチ・堆肥の炭素材。刈草は畑へ回す</td>
+</tr>
+<tr>
+<td>笹</td>
+<td><strong>冬（11〜2月）が本命</strong> ※青笹は夏に一時利用可</td>
+<td>トンネル骨組み・支柱。冬伐りは長持ち→翌季用にストック</td>
+</tr>
+<tr>
+<td>杭（杉の細い若木）</td>
+<td><strong>冬（11〜2月・落葉後）</strong></td>
+<td>杭・支柱。松は腐りやすく杭に不向き</td>
+</tr>
+<tr>
+<td>薪（松・ヤマザクラ）</td>
+<td><strong>冬（11〜2月）</strong></td>
+<td>薪。ヤマザクラは燻製材にも</td>
+</tr>
+<tr>
+<td>ホダ木（ヤマザクラ）</td>
+<td><strong>冬（11〜2月）伐採→翌春に植菌</strong></td>
+<td>シイタケ原木（針葉樹＝杉/松/モミは不可・広葉樹を使う）</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>今（夏）やること</strong>：下草刈り（刈草は畑のマルチ/堆肥へ）／防虫ネット骨組み用の笹は当座の青笹で確保／自生樹の位置確認（コナラ・クヌギ＝杭・ホダ木候補／タラ・ツバキは花期に同定）</li>
+<li><strong>冬（11〜2月）にまとめて</strong>：笹・杭・薪・ホダ木を伐採（材が乾く・虫が少ない・見通しが良い）。青笹で回した防虫ネット骨組みを冬伐りの本命に更新し、翌季用をストック</li>
+</ul></div></details><details class='acc l2'><summary>📐 畝別 連作＋作付け窓 早見表（いつ空く・どこに・なぜ）</summary><div class='acc-body'><p><a id="bed-map"></a></p>
+<p>前作の<strong>科</strong>を見て「科が替わる畝」に置く。<strong>アブラナ科の集中回避が最重要</strong>（根こぶ病）。
+<strong>収穫終了 → 次作</strong> の間が<strong>整備の窓</strong>（＝空く期間に 石灰→(1週)→堆肥→(1週)→定植/播種 を仕込む）。物理配置→ bed-plan.md。</p>
+<table>
+<thead>
+<tr>
+<th>畝</th>
+<th>今作（科）</th>
+<th>収穫終了</th>
+<th>次作＝播種/定植</th>
+<th>整備の窓</th>
+<th>連作の狙い</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1東</td>
+<td>キュウリ（ウリ）</td>
+<td>8〜9月</td>
+<td>葉物枠（ヒユ/キク/アブラナ）9月〜</td>
+<td>撤去後すぐ・9月頭</td>
+<td>ウリ→葉物で科替わり</td>
+</tr>
+<tr>
+<td>2東</td>
+<td>ミニトマト・ピーマン（ナス）</td>
+<td>10月</td>
+<td>キャベツ/ブロッコリー定植（アブラナ）</td>
+<td>10月・撤去後に整地</td>
+<td>ナス→アブラナ(good)</td>
+</tr>
+<tr>
+<td>3東</td>
+<td>イチゴ（バラ・多年）</td>
+<td>固定</td>
+<td>ランナー更新</td>
+<td>—（多年）</td>
+<td>株更新</td>
+</tr>
+<tr>
+<td>4東</td>
+<td>サトイモ（サトイモ）</td>
+<td>10〜11月</td>
+<td>玉ねぎ定植 11月〔予約①〕</td>
+<td>11月頭・掘上げ後すぐ</td>
+<td>サト→ネギで科替わり</td>
+</tr>
+<tr>
+<td>5東</td>
+<td>カブ・コマツナ（アブラナ）</td>
+<td>順次〜秋</td>
+<td>⚠️アブラナ以外（マメ/ネギ等）</td>
+<td>収穫後すぐ</td>
+<td>連作を切る</td>
+</tr>
+<tr>
+<td>6東</td>
+<td>ニンジン（セリ）</td>
+<td>初冬</td>
+<td>未定</td>
+<td>初冬〜</td>
+<td>—</td>
+</tr>
+<tr>
+<td>7東</td>
+<td>ニンジン＋カブ（セリ＋アブラナ）</td>
+<td>初冬</td>
+<td>⚠️アブラナ以外</td>
+<td>初冬〜</td>
+<td>連作を切る</td>
+</tr>
+<tr>
+<td>8東</td>
+<td>空き（即使用可）</td>
+<td>—</td>
+<td>秋ダイコン（アブラナ・開墾）8月〜</td>
+<td>今すぐ（開墾中）</td>
+<td>開墾＝連作フリー</td>
+</tr>
+<tr>
+<td>9東</td>
+<td>オクラ（アオイ）・下仁田ネギ（ヒガンバナ）</td>
+<td>オクラ10月/ネギ12月</td>
+<td>未定</td>
+<td>冬〜</td>
+<td>ネギは緩衝役</td>
+</tr>
+<tr>
+<td>10西</td>
+<td>ニンジン（セリ）</td>
+<td>初冬</td>
+<td>未定</td>
+<td>初冬〜</td>
+<td>—</td>
+</tr>
+<tr>
+<td>11西</td>
+<td>場つなぎ葉物（アブラナ/キク）</td>
+<td>9〜10月</td>
+<td>玉ねぎ定植 11月〔予約②〕</td>
+<td>10月・撤去後に床づくり</td>
+<td>科替わり</td>
+</tr>
+</tbody>
+</table></div></details></div></details><details class='acc sec' id='sec-procurement'><summary>🛒 手配リスト</summary><div class='acc-body'><details class='acc l2'><summary>種苗（種・種球・苗）｜今〜来春3月</summary><div class='acc-body'><ul>
+<li>☐ <strong>8/下〜</strong> ★ ラッキョウ 種球 約50球（斜面）… 8月下旬〜9月上旬植付（<a href="https://shop.takii.co.jp/selection/garlic1708.html" target="_blank" rel="noopener noreferrer">育て方</a>・<a href="#sec-m08">8月へ</a>）</li>
+<li>☐ <strong>8/下〜</strong> ★ ワケギ 種球 20〜30球（斜面）… 8月下旬〜9月中旬植付（<a href="https://www.shuminoengei.jp/m-pc/a-page_p_detail/target_plant_code-532/target_tab-2" target="_blank" rel="noopener noreferrer">育て方</a>・<a href="#sec-m08">8月へ</a>）</li>
+<li>☐ <strong>9/上</strong> ★ ニンニク 種球 50片（寒地系＝福地ホワイト六片 等・畑から斜面へ振替）… 9月上〜中旬植付（<a href="https://shop.takii.co.jp/selection/garlic1208.html" target="_blank" rel="noopener noreferrer">育て方</a>・<a href="#sec-m09">9月へ</a>）</li>
+<li>☐ <strong>8/上</strong> 秋ダイコン（耐病総太り系）… 8月上旬＆中旬に10本ずつ（<a href="https://www.takii.co.jp/tsk/manual/daikon.html" target="_blank" rel="noopener noreferrer">育て方</a>・<a href="#sec-m08">8月へ</a>）</li>
+<li>☐ <strong>8/下</strong> ホウレンソウ（冬の主力・多め・石灰とセット）… 8月下旬〜（<a href="https://www.takii.co.jp/tsk/manual/hourensou.html" target="_blank" rel="noopener noreferrer">育て方</a>・<a href="#sec-m08">8月へ</a>）</li>
+<li>☐ <strong>8/下</strong> 春菊 … 8月下旬〜9月（<a href="https://www.takii.co.jp/tsk/manual/shungiku.html" target="_blank" rel="noopener noreferrer">育て方</a>・<a href="#sec-m08">8月へ</a>）</li>
+<li>☐ <strong>8/下</strong> リーフレタス（追加ぶん）… 8月下旬・9月（<a href="https://www.takii.co.jp/tsk/manual/retasu.html" target="_blank" rel="noopener noreferrer">育て方</a>・<a href="#sec-m08">8月へ</a>）</li>
+<li>☐ <strong>8月〜</strong> ミズナ（チンゲンサイに替えて採用）… 梅雨明け後ずらしまき（<a href="https://www.takii.co.jp/tsk/manual/mizunamibuna.html" target="_blank" rel="noopener noreferrer">育て方</a>）</li>
+<li>☐ <strong>随時</strong> カブ／コマツナ／ハツカダイコン … 継続まきの種残量を確認（無ければ補充）（育て方 <a href="https://www.takii.co.jp/tsk/manual/kabu.html" target="_blank" rel="noopener noreferrer">カブ</a>・<a href="https://www.takii.co.jp/tsk/manual/komatsuna.html" target="_blank" rel="noopener noreferrer">コマツナ</a>・<a href="https://www.takii.co.jp/tsk/manual/daikon.html" target="_blank" rel="noopener noreferrer">ダイコン</a>）</li>
+<li>☐ <strong>9/中</strong> タマネギ（貯蔵性 中生〜中晩生・早生は保存×）… 9月中旬 苗床に150粒→120球（<a href="https://www.takii.co.jp/tsk/manual/tamanegi.html" target="_blank" rel="noopener noreferrer">育て方</a>・<a href="#sec-m09">9月へ</a>）</li>
+<li>☐ <strong>9月</strong> のらぼう菜（端境期の本命・とう立ち菜・まき遅れ厳禁）… 9月まき（<a href="https://agri.mynavi.jp/2024_05_18_263747/" target="_blank" rel="noopener noreferrer">育て方</a>・<a href="#sec-m09">9月へ</a>）</li>
+<li>☐ <strong>9〜10月</strong> 菜花（ナバナ）… 9〜10月（<a href="https://sakata-tsushin.com/lesson-vegetable/detail_30/" target="_blank" rel="noopener noreferrer">育て方</a>・<a href="#sec-m09">9月へ</a>）</li>
+<li>☐ <strong>9/中</strong> 長ネギ（秋まき越冬トライアル 20〜30本）… 9月中旬 苗床（<a href="https://www.takii.co.jp/tsk/manual/negi.html" target="_blank" rel="noopener noreferrer">育て方</a>・<a href="#sec-m09">9月へ</a>）</li>
+<li>☐ <strong>9/下〜</strong> 寒締めホウレンソウ（上のホウレンソウ種を10月分に回してもよい）… 9月下旬〜10月（<a href="https://www.takii.co.jp/tsk/manual/hourensou.html" target="_blank" rel="noopener noreferrer">育て方</a>・<a href="#sec-m10">10月へ</a>）</li>
+<li>☐ <strong>9〜10月</strong> チャイブ 苗 2〜4株（半日陰可・斜面）… 9〜10月（<a href="https://www.shuminoengei.jp/m-pc/a-page_p_detail/target_plant_code-548/target_tab-2" target="_blank" rel="noopener noreferrer">育て方</a>・<a href="#sec-m09">9月へ</a>）</li>
+<li>☐ <strong>9月</strong> ルバーブ 株（クラウン）2〜3（葉身は有毒・斜面）… 9月（<a href="https://www.shuminoengei.jp/m-pc/a-page_p_detail/target_plant_code-1187/target_tab-2" target="_blank" rel="noopener noreferrer">育て方</a>・<a href="#sec-m09">9月へ</a>）</li>
+<li>☐ <strong>10〜11月</strong> アスパラガス 大苗 5〜10株（深植え・収穫は2〜3年目・斜面）… 10〜11月（<a href="https://sakata-tsushin.com/lesson-vegetable/detail_8/" target="_blank" rel="noopener noreferrer">育て方</a>・<a href="#sec-m10">10月へ</a>）</li>
+<li>☐ <strong>冬手配</strong> 果樹の春植え苗：桃・さくらんぼ・<strong>サルナシ（猿梨＝ベビーキウイ）</strong>（導入検討・寒冷地は春植え）… 手配は冬・植えは3〜4月。受粉樹の要否・耐寒性を購入前に一次情報で確認（サルナシは雌雄異株で雄株が要／既存キウイ雄株との相性も確認）（<a href="#sec-m03">3月へ</a>）</li>
+<li>☐ <strong>在庫確認(冬)</strong> キュウリ 種（4月まき・種は冬手配）… 数年もつので不足だけ（<a href="https://www.takii.co.jp/tsk/manual/kyuuri.html" target="_blank" rel="noopener noreferrer">育て方</a>・<a href="#sec-m04">4月へ</a>）</li>
+<li>☐ <strong>在庫確認(冬)</strong> オクラ 種（5〜6月直播）…（<a href="https://www.takii.co.jp/tsk/manual/okura.html" target="_blank" rel="noopener noreferrer">育て方</a>・<a href="#sec-m05">5月へ</a>）</li>
+<li>☐ <strong>在庫確認(冬)</strong> エダマメ 種（5月〜直播・ずらしまき）…（<a href="https://www.takii.co.jp/tsk/manual/edamame.html" target="_blank" rel="noopener noreferrer">育て方</a>・<a href="#sec-m05">5月へ</a>）</li>
+<li>☐ <strong>在庫確認(冬)</strong> インゲン（ロマノ）種（5月〜直播）…（<a href="https://www.takii.co.jp/tsk/manual/ingen.html" target="_blank" rel="noopener noreferrer">育て方</a>・<a href="#sec-m05">5月へ</a>）</li>
+<li>☐ <strong>在庫確認(冬)</strong> アオジソ 種（プランター・4〜5月）…（<a href="https://sakata-tsushin.com/lesson-vegetable/detail_192/" target="_blank" rel="noopener noreferrer">育て方</a>）</li>
+<li>☐ <strong>在庫確認(冬)</strong> イタリアンパセリ 種（プランター）…</li>
+<li>☐ <strong>2月まで</strong> ミニトマト 種（イエローアイコ・純あま）… 3月上旬から加温育苗（発芽適温25〜30℃）（<a href="https://www.takii.co.jp/tsk/manual/tomato.html" target="_blank" rel="noopener noreferrer">育て方</a>・<a href="#sec-m03">3月へ</a>）</li>
+<li>☐ <strong>2月まで</strong> ピーマン 種（京波）… 3月上旬 加温育苗（<a href="https://www.takii.co.jp/tsk/manual/piman.html" target="_blank" rel="noopener noreferrer">育て方</a>・<a href="#sec-m03">3月へ</a>）</li>
+<li>☐ <strong>2月まで</strong> パプリカ 種（らんらん）… 3月上旬 加温育苗（<a href="https://www.takii.co.jp/tsk/manual/piman.html" target="_blank" rel="noopener noreferrer">育て方</a>・<a href="#sec-m03">3月へ</a>）</li>
+<li>☐ <strong>2〜3月</strong> 長ネギ 種（根深＝石倉/元蔵 等・春まき本命／下仁田＝冬どり用）… 3月下旬〜4月まき・根深60本ぶん（<a href="https://www.takii.co.jp/tsk/manual/negi.html" target="_blank" rel="noopener noreferrer">育て方</a>・<a href="#sec-m03">3月へ</a>）</li>
+<li>☐ <strong>早春(2〜3月)</strong> サトイモ 種芋（土垂）… 春植え(5月)用に確保（<a href="#sec-m05">5月へ</a>）</li>
+<li>☐ <strong>3月</strong> レタス 種（春まき3〜5月・プランター用／秋ぶんと別）… 高温前に（<a href="https://www.takii.co.jp/tsk/manual/retasu.html" target="_blank" rel="noopener noreferrer">育て方</a>・<a href="#sec-m03">3月へ</a>）</li>
+<li>☐ <strong>3月</strong> イチゴ … ランナー/株分けで更新（買うなら春苗）（<a href="https://www.takii.co.jp/tsk/manual/strawberry.html" target="_blank" rel="noopener noreferrer">育て方</a>・<a href="#sec-m03">3月へ</a>）</li>
+</ul>
+<hr /></div></details><details class='acc l2'><summary>肥料・資材</summary><div class='acc-body'><ul>
+<li>☐ <strong>今〜8月</strong> ★ 開墾畝・ホウレンソウ床用の 苦土石灰（pH調整。ホウレンソウは酸性に弱く必須）</li>
+<li>☐ <strong>今〜順次</strong> ★ 秋冬の開墾畝・床づくり用の 完熟堆肥 約5〜6袋（40L目安）＝6〜8畝分（まとめ買い／店頭の表示量で調整）</li>
+<li>☐ <strong>秋冬の定植・まきの2週前</strong> 元肥用の ぼかし肥料（有機・発酵済みで根に優しい）… 不足分を単肥で（N:油かす/魚粉・P:骨粉・K:草木灰）。玉ねぎ・にんにくは多め、ダイコンは又根回避で未熟物を避ける</li>
+<li>☐ <strong>〜8月</strong> アブラナ科・根菜用の 防虫ネット 目合い0.8mm（根菜のキスジノミハムシがひどければ0.6mm）… まず在庫確認。骨組みは笹＋麻紐で自作</li>
+<li>☐ <strong>次作用</strong> 育苗用ポット／セルトレイ（キャベツ・ブロッコリー等の非直播ぶん）… 要否は手持ち資材と比べて現場で判断</li>
+<li>☐ <strong>9月</strong> タマネギ・長ネギ苗床用の 育苗箱／セルトレイ … 要否は手持ち資材と比べて現場で判断</li>
+<li>☐ <strong>2〜3月</strong> ナス科の加温育苗用の 育苗マット／簡易温室（発芽適温25〜30℃を確保）… 手持ちと比べて現場で判断</li>
+<li>☐ <strong>〜10月</strong> 寒締め・防寒用の 不織布／トンネル資材（＝被覆材。<strong>骨組みは買わず空き地の笹で自作</strong>、下記）</li>
+<li>☐ <strong>11〜12月</strong> 厳寒の追加保温用の 藁こも（任意）</li>
+<li>☑ <strong>自給</strong> 支柱・トンネルの骨組み ＝ <strong>空き地の笹</strong>（手配不要）。冬(11〜2月)伐りが虫つかず長持ち→翌季用にストック。作り方は care.md</li>
+<li>☑ <strong>自給</strong> 杭・丸太・薪材・シイタケのホダ木 ＝ <strong>敷地の間伐材</strong>（手配不要）。杭は杉の細い若木、ホダ木は広葉樹の<strong>ヤマザクラ</strong>（針葉樹=杉/松/モミは不可）。松は薪向き。間伐は冬(11〜2月)</li>
+<li>☑ <strong>在庫</strong> 麻紐（手配不要）</li>
+</ul>
+<hr /></div></details></div></details><details class='acc sec' id='sec-year-calendar'><summary>🗓 一年の庭仕事</summary><div class='acc-body'><nav class='month-nav'><a href='#sec-m01'>1月</a><a href='#sec-m02'>2月</a><a href='#sec-m03'>3月</a><a href='#sec-m04'>4月</a><a href='#sec-m05'>5月</a><a href='#sec-m06'>6月</a><a href='#sec-m07'>7月</a><a href='#sec-m08'>8月</a><a href='#sec-m09'>9月</a><a href='#sec-m10'>10月</a><a href='#sec-m11'>11月</a><a href='#sec-m12'>12月</a></nav><details class='acc month' id='sec-m01'><summary>1月 ｜ 冬・農閑期</summary><div class='acc-body'><div class='sum'><div class='k care'>気にすること</div><div class='v'><ul>
+<li>落葉果樹の剪定適期（芽が動く前）。晩霜はまだ先で、いまは計画と土づくりの時期</li>
+<li>レモン鉢は室内で越冬中（水やり控えめ・過湿で根腐れ注意）</li>
+</ul></div><div class='k act'>行動</div><div class='v'><ul>
+<li>果樹の休眠剪定＋寒肥：リンゴ・キウイ・ウメ・ブルーベリー</li>
+<li>雪囲い。次シーズンの計画づくりと種苗の発注</li>
+<li>畑を広げる開墾・粗起こし（1〜2 月）。育苗設備の準備</li>
+</ul></div></div><details class='acc sub'><summary>詳しく（施肥・注意など）</summary><div class='acc-body'><ul>
+<li><strong>落葉果樹の休眠期管理（12〜2 月）</strong>：開花・展葉の前に剪定し、有機質の寒肥を入れる。</li>
+<li><strong>冬の土づくり（寒起こし）</strong>：収穫後の空き畝を粗く掘り返して寒気に当て、越冬害虫・病原を減らす。半熟コンポストはここですき込む（これから植える苗の株元・根菜の播種直前には使わない）。</li>
+<li><strong>資材のまとめ買い</strong>（中庸・純作付 約 47㎡ 想定）：完熟牛ふん堆肥 40L×8 袋、苦土石灰 20kg×1、化成 8-8-8 20kg×1、タネ一式。堆肥は約 117kg と物量が多いので配達／複数回運搬を見込む。</li>
+</ul></div></details></div></details><details class='acc month' id='sec-m02'><summary>2月 ｜ 冬〜早春・準備</summary><div class='acc-body'><div class='sum'><div class='k care'>気にすること</div><div class='v'><ul>
+<li>剪定の締切（芽が動く前まで）。春の自生資源（フキノトウ・ヨモギ）に備える月</li>
+<li>石灰は「定植の 2 週間以上前」に入れる ── 逆算して今から</li>
+</ul></div><div class='k act'>行動</div><div class='v'><ul>
+<li>剪定を終わらせる。果樹・宿根に寒肥（有機質）</li>
+<li>拡張地を含め苦土石灰を全面散布（pH 調整）</li>
+<li>春播種・春植えの準備。自生資源の収穫カレンダーを再確認</li>
+</ul></div></div><details class='acc sub'><summary>詳しく（施肥・注意など）</summary><div class='acc-body'><ul>
+<li><strong>寒肥＋石灰</strong>：果樹・宿根は寒肥（12〜2 月）。畑は苦土石灰を全面に（多用しない・100〜150g/㎡）。</li>
+<li><strong>自生資源の再確認</strong>：毎年 2 月にフキノトウ・ヨモギ若芽の適期（月末〜3 月）を思い出し、見回りを始める準備。</li>
+<li><strong>春の段取り</strong>：ジャガイモ等の春植え、ナス科の加温育苗（3 月）に向けた場所・資材の確保。</li>
+</ul></div></details></div></details><details class='acc month' id='sec-m03'><summary>3月 ｜ 早春・始動</summary><div class='acc-body'><div class='sum'><div class='k care'>気にすること</div><div class='v'><ul>
+<li>ナス科は発芽適温 25〜30℃ ── <strong>加温しないと育たない</strong>（室内＋育苗マット）</li>
+<li>晩霜の警戒開始（当地は 5 月まで遅霜の記録あり）</li>
+<li>自生資源が採れ始める。<strong>春を逃さない</strong></li>
+</ul></div><div class='k act'>行動</div><div class='v'><ul>
+<li>ナス科（トマト・ピーマン・パプリカ）を種から加温育苗開始</li>
+<li>レタス播種（3〜5 月）。長ネギ（根深）を種から育苗開始（3 月下旬〜4 月）</li>
+<li>イチゴに春の追肥・マルチ。石灰の 1 週間後に堆肥をすき込み</li>
+<li>フキノトウ（〜4 月）・ヨモギ若芽（3〜5 月）・<strong>タラの芽（斜面・4〜5 月）</strong>の収穫。ツバキ（茶用・同定でき次第）</li>
+</ul></div></div><details class='acc sub'><summary>詳しく（施肥・注意など）</summary><div class='acc-body'><ul>
+<li><strong>レタス</strong>：好光性なので覆土は 2〜3mm 以下、発芽まで土表面を湿潤に、半日陰で管理。</li>
+<li><strong>ヨモギの同定</strong>：葉裏が白く綿毛・揉むと香る株のみ。トリカブト（葉裏白くない・無臭・猛毒）と誤認しない。草餅用は重曹で下茹で→アク抜き。</li>
+<li><strong>宿根資源の春植え</strong>：アスパラ大苗・ミツバ・ウド。ミツバ・ウドは半日陰・湿った場所（フキと同じ環境）へ。</li>
+<li><strong>タラの芽</strong>：斜面自生。頂芽が開く直前が食べごろ→天ぷら。1 本から頂芽を採り尽くすと木が枯れるので、側芽/2 番芽は残す。幹に鋭い棘。</li>
+<li><strong>ツバキ（茶用）</strong>：斜面自生。ヤブツバキなら冬〜早春の花で椿茶、チャノキなら春の新芽で緑茶。用途・適期が変わるので<strong>冬〜早春の開花で同定</strong>してから。</li>
+<li><strong>果樹の春植え適期入り（3 月中旬〜4 月）</strong>：検討中の桃・さくらんぼはここ。品種・受粉樹・耐寒性を購入前に一次情報で確認。</li>
+</ul></div></details></div></details><details class='acc month' id='sec-m04'><summary>4月 ｜ 春・育苗と芽吹き</summary><div class='acc-body'><div class='sum'><div class='k care'>気にすること</div><div class='v'><ul>
+<li>キュウリは育苗 30〜40 日と短い ── 5 月定植に合わせて今まく</li>
+<li>宿根（ニラ・ミョウガ・シイタケ）の萌芽管理が始まる</li>
+</ul></div><div class='k act'>行動</div><div class='v'><ul>
+<li>キュウリ育苗開始。アオジソ播種（4〜5 月）</li>
+<li>ニラの萌芽・追肥、ミョウガの萌芽・敷き藁、シイタケの春発生・散水</li>
+<li>フキ葉柄（4〜6 月）の収穫</li>
+</ul></div></div><details class='acc sub'><summary>詳しく（施肥・注意など）</summary><div class='acc-body'><ul>
+<li><strong>多年草の立ち上がり</strong>：ニラは初年は控えめに。ミョウガは敷き藁で乾燥防止。シイタケのホダ木は散水で春発生を促す。</li>
+<li><strong>自生資源</strong>：フキ葉柄は塩で板ずり→茹で→水にさらし皮むき（アク抜き必須）。</li>
+</ul></div></details></div></details><details class='acc month' id='sec-m05'><summary>5月 ｜ 春〜初夏・定植ラッシュ</summary><div class='acc-body'><div class='sum'><div class='k care'>気にすること</div><div class='v'><ul>
+<li><strong>遅霜明け（5 月中〜下旬）が解禁ライン</strong> ── 果菜の定植とレモン搬出はここまで待つのが安全</li>
+<li>マメ科は元肥半量（多いと「つるボケ」）</li>
+</ul></div><div class='k act'>行動</div><div class='v'><ul>
+<li>トマト・ピーマン・パプリカ・キュウリ・サトイモ・ネギを定植。支柱・防虫ネット</li>
+<li>エダマメ・インゲンを直播。ナガイモのつる更新・植付</li>
+<li>レモン鉢を屋外へ搬出（5 月中〜下旬。数日は半日陰で慣らす）</li>
+<li>自生：タラの芽の残り、<strong>ウワミズザクラの蕾＝アンニンゴ</strong>（斜面・要同定／湯通し→塩漬け）。花期なので<strong>同定</strong>もここで</li>
+</ul></div></div><details class='acc sub'><summary>詳しく（施肥・注意など）</summary><div class='acc-body'><ul>
+<li><strong>遅霜の前科</strong>：2026 はリンゴ「ツガル」が晩霜被害。GW 明けより下旬まで待つのが安全。</li>
+<li><strong>ウワミズザクラ（アンニンゴ）</strong>：斜面自生・未同定（イヌザクラと酷似→<strong>花穂の柄の基部に葉</strong>があるのがウワミズザクラ）。蕾～若い青実を塩漬け（杏仁香）。<strong>核・未熟部に青酸配糖体→蕾は湯通し・青実は塩漬けで処理必須</strong>。色づく前の緑を摘む（窓が短い）。</li>
+<li><strong>レモン搬出</strong>：いきなり直射に出さず慣らす。以降は屋外で生育。</li>
+<li><strong>レタス</strong>：5 月下旬〜6 月は日中 25℃ を超えやすく高温休眠。朝の涼しい時間にまき、発芽まで涼しく。</li>
+</ul></div></details></div></details><details class='acc month' id='sec-m06'><summary>6月 ｜ 初夏・追肥と収穫始まり</summary><div class='acc-body'><div class='sum'><div class='k care'>気にすること</div><div class='v'><ul>
+<li>果菜の追肥開始（生育に合わせ月 1〜2 回）</li>
+<li>長ネギ（根深）の溝植え定植（6〜7 月）。梅雨入りで病気管理</li>
+</ul></div><div class='k act'>行動</div><div class='v'><ul>
+<li>果菜の追肥。キュウリはずらしまきで株数調整</li>
+<li>長ネギを溝植え（60 本）→ 以降、土寄せを繰り返す</li>
+<li>イチゴ（5〜6 月）の収穫。※ブルーベリー・ウメ等は2026年植えの若木で、収穫は数年先（管理のみ）</li>
+<li>自生：<strong>ウワミズザクラの青い未熟果＝アンニンゴ</strong>（斜面・色づく前の緑のうちに・塩漬け）</li>
+</ul></div></div><details class='acc sub'><summary>詳しく（施肥・注意など）</summary><div class='acc-body'><ul>
+<li><strong>施肥</strong>：果菜の多肥・長期組（トマト・キュウリ・オクラ・サトイモ・パプリカ）は追肥が本体。6〜9 月に化成 30〜50g/㎡ か液肥。</li>
+<li><strong>収穫</strong>：ブルーベリー・ウメ等の落葉果樹は 6〜7 月が本来の目安だが、<strong>2026年植えの若木は数年先</strong>。導入検討中のさくらんぼも同様。</li>
+</ul></div></details></div></details><details class='acc month' id='sec-m07'><summary>7月 ｜ 盛夏・収穫最盛＋秋冬の仕込み開始</summary><div class='acc-body'><div class='sum'><div class='k care'>気にすること</div><div class='v'><ul>
+<li><strong>当地は秋が早い</strong> ── 暖地の目安より 1〜2 週早める</li>
+<li>梅雨×高温で種が流れる・徒長する ── ポット育苗（軒下）を優先</li>
+<li>秋冬野菜の播種本番に入る</li>
+</ul></div><div class='k act'>行動</div><div class='v'><ul>
+<li>秋冬野菜の育苗・直播：キャベツ・ブロッコリー育苗、ニンジン直まき、コマツナ・ハツカダイコン・カブのずらしまき</li>
+<li><strong>まいた日から防虫ネット</strong>。果菜は追肥・収穫最盛</li>
+<li><strong>キュウリのずらし定植</strong>：育苗中の後続苗を本葉2〜3枚で順次定植（初期株が病気で衰える前に後続を用意＝収穫を切らさない）。誘引・整枝・べと病/うどんこ病の防除も継続</li>
+<li>斜面の種球を手配（ラッキョウ・ワケギ・寒地系ニンニク）</li>
+<li><strong>敷地の下草刈り</strong>（草が伸びる盛り）。刈った草・枝葉は炭素資材/マルチに回す</li>
+<li><strong>イチゴのランナー受け（7〜8月）</strong>：伸びた子株をポットで受けUピンで固定。次郎・三郎苗を使う（太郎苗は避ける）。9月まで養成→9〜10月定植。来季の株更新・増収の要</li>
+</ul></div></div><details class='acc sub'><summary>詳しく（施肥・注意など）</summary><div class='acc-body'><ul>
+<li><strong>梅雨×高温の実務</strong>：直まきよりポット育苗優先（種流亡・徒長・種腐れを避ける）。アブラナ科は 8 月がヨトウ・アオムシ最盛期→防虫ネット前提。</li>
+<li><strong>下草刈り</strong>：初夏〜夏（6〜8 月）が本番。樹木の<strong>間伐は冬（12 月〜2 月）</strong>に分ける。刈草・枝葉はコンポストの炭素材や敷きマルチに使える。</li>
+<li><strong>ニンジン</strong>：好光性で覆土薄く、雷雨で流れるので不織布/板で覆う。晩抽性品種。</li>
+<li><strong>種球の締切</strong>：ラッキョウ・ワケギは 8 月下旬〜9 月植付、ニンニクは 9 月上〜中旬植付 ── 種球は 7 月末〜8 月に手配。</li>
+</ul></div></details></div></details><details class='acc month' id='sec-m08'><summary>8月 ｜ 晩夏・定植と播種本番</summary><div class='acc-body'><div class='sum'><div class='k care'>気にすること</div><div class='v'><ul>
+<li>ヨトウ・アオムシ最盛期 ── アブラナ科は防虫ネット前提</li>
+<li>秋ダイコンの播種適期（下旬）。涼しくなってから葉物を開始</li>
+</ul></div><div class='k act'>行動</div><div class='v'><ul>
+<li>キャベツ・ブロッコリーを各 12〜15 株選抜して定植</li>
+<li>秋ダイコン（2 回に分けて計 20 本）を直播＋防虫ネット。カブ・コマツナ・ハツカ継続</li>
+<li>下旬にホウレンソウ・春菊・リーフレタス開始</li>
+<li>ラッキョウ・ワケギの種球植付（斜面・8 月下旬〜）</li>
+<li><strong>イチゴのランナー受け継続</strong>（子株を9月まで養成→9〜10月定植）</li>
+</ul></div></div><details class='acc sub'><summary>詳しく（施肥・注意など）</summary><div class='acc-body'><ul>
+<li><strong>後作の共用</strong>：夏果菜を収穫した畝に秋冬アブラナ科・葉根菜を入れると、同時に要る面積を抑えられる。</li>
+<li><strong>斜面の秋植え（宿根・球根）</strong>：畑の畝計画とは別枠。西日・水はけ良の斜面にラッキョウ・ワケギ・（9 月に）ニンニク・チャイブ・ルバーブ。</li>
+</ul></div></details></div></details><details class='acc month' id='sec-m09'><summary>9月 ｜ 初秋・秋まきと保存作物の導入</summary><div class='acc-body'><div class='sum'><div class='k care'>気にすること</div><div class='v'><ul>
+<li><strong>まき遅れ厳禁</strong>（寒冷地は冬までに育たず越冬に失敗）</li>
+<li>端境期（翌 3〜4 月）対策の秋まきは今が本番</li>
+<li>タマネギ育苗の開始月</li>
+</ul></div><div class='k act'>行動</div><div class='v'><ul>
+<li>秋冬葉物の追いまき（播種上限は概ね中旬）</li>
+<li>端境期対策：のらぼう菜・菜花・寒締めホウレンソウを秋まき</li>
+<li>タマネギ育苗開始（中旬・120 球ぶん）。ニンニク植付（9 月上〜中旬・斜面）</li>
+<li>ワケギ・チャイブ・ルバーブの植付。<strong>イチゴ：夏に養成した子株を親から切り離し→9〜10 月に定植（株更新）</strong></li>
+</ul></div></div><details class='acc sub'><summary>詳しく（施肥・注意など）</summary><div class='acc-body'><ul>
+<li><strong>秋まき越冬野菜</strong>：のらぼう菜（寒さに極めて強い・端境期の王様）は 9 月上〜中旬、寒締めホウレンソウは 9〜10 月。まき遅れると越冬失敗。</li>
+<li><strong>保存作物の導入</strong>：タマネギは翌 6〜7 月どりで畑を占有。ニンニクは寒地系（福地ホワイト六片 等）を斜面へ全量、越冬前に葉 3〜4 枚・草丈 15cm を目安。</li>
+</ul></div></details></div></details><details class='acc month' id='sec-m10'><summary>10月 ｜ 秋・収穫と越冬準備</summary><div class='acc-body'><div class='sum'><div class='k care'>気にすること</div><div class='v'><ul>
+<li>初霜の時期（暖秋／寒秋で前後）＝果菜終了と防寒開始のライン</li>
+<li>秋ダイコンの収穫リミット。タマネギ定植の準備</li>
+</ul></div><div class='k act'>行動</div><div class='v'><ul>
+<li>秋野菜の収穫（コマツナ・カブ・ダイコン・ハツカ・レタス・春菊）</li>
+<li>ホウレンソウ最終回（不織布/トンネルで寒締めへ）</li>
+<li>アスパラ大苗の秋植え（10〜11 月）。※リンゴ（ツガル 9 月・フジ 10〜11 月）は本来の収穫期だが、2026年植えの若木は数年先（管理のみ）</li>
+</ul></div></div><details class='acc sub'><summary>詳しく（施肥・注意など）</summary><div class='acc-body'><ul>
+<li><strong>寒締めの仕込み</strong>：ホウレンソウはトンネル/べた掛けで寒さに当て糖度を上げる（厳冬〜3 月どり）。</li>
+<li><strong>翌年の整地</strong>：収穫後の畝に堆肥をすき込み、輪作に向けて整える。</li>
+</ul></div></details></div></details><details class='acc month' id='sec-m11'><summary>11月 ｜ 晩秋・越冬仕込み</summary><div class='acc-body'><div class='sum'><div class='k care'>気にすること</div><div class='v'><ul>
+<li><strong>レモン取り込みの締切</strong>：最低気温が 5℃ を下回る前（当地で 10 月下旬〜11 月上旬、初霜前）</li>
+<li>タマネギ定植の適期</li>
+</ul></div><div class='k act'>行動</div><div class='v'><ul>
+<li>タマネギ定植（120 球）。下仁田ネギの土寄せ・軟白</li>
+<li>レモン鉢を室内へ取り込み（11 月上旬・初霜前に必ず）</li>
+<li>イチゴ・柑橘（レモン鉢）の防寒。ナガイモ掘り上げ。※キウイは2026年植えの若木で収穫は3〜5年先（管理のみ）</li>
+<li>落葉果樹の苗は寒冷地では春植え推奨 → 秋は手配のみ</li>
+</ul></div></div><details class='acc sub'><summary>詳しく（施肥・注意など）</summary><div class='acc-body'><ul>
+<li><strong>レモン取り込み</strong>：日当たりの良い窓辺（室温 8℃ 以上が理想）。暖房の直風・乾燥を避け、水やりは控えめ。実は 11〜12 月に色づいたものから。</li>
+<li><strong>土寄せ</strong>：下仁田ネギは軟白部を伸ばすため土寄せを重ねる。</li>
+</ul></div></details></div></details><details class='acc month' id='sec-m12'><summary>12月 ｜ 初冬・収穫と翌年準備</summary><div class='acc-body'><div class='sum'><div class='k care'>気にすること</div><div class='v'><ul>
+<li>下仁田ネギの収穫本番（本来の適期）。寒締めホウレンソウの寒締め処理</li>
+<li>翌年計画（次年版）へ更新する月</li>
+</ul></div><div class='k act'>行動</div><div class='v'><ul>
+<li>下仁田ネギ収穫。寒締めホウレンソウの厳寒期どり開始（12〜2 月）</li>
+<li>堆肥仕込み・畑の片付け。果樹の寒肥準備・剪定開始</li>
+<li>コンポストの状態確認。翌年の作付け計画へ更新</li>
+<li><strong>翌季用の笹を冬伐り</strong>：空き地の笹（径 1〜2cm）を伐って乾燥ストック。冬（11〜2 月）伐りは虫が付きにくく長持ち→翌シーズンのトンネル骨組み・支柱に使う（作り方は care.md）</li>
+<li><strong>樹木の間伐</strong>（落葉後・11〜2 月）：杉の細い若木＝杭/支柱、松＝薪、モミ＝整理。<strong>ヤマザクラは玉切りしてシイタケのホダ木用に確保</strong>（翌春に植菌）</li>
+</ul></div></div><details class='acc sub'><summary>詳しく（施肥・注意など）</summary><div class='acc-body'><ul>
+<li><strong>冬の土づくり（寒起こし）</strong>：空き畝（特に春作予定地）を粗く掘り返し、半熟コンポストをすき込む（11〜2 月）。</li>
+<li><strong>笹の冬伐り</strong>：青笹はワンシーズンで傷むので、本番用は冬伐りの乾いた稈で更新する。空き地の笹は放置で藪化するため、伐り出しが管理も兼ねる。</li>
+<li><strong>間伐と材の使い分け</strong>：冬は見通しが良く材も乾きやすい。杉の細い若木は杭/支柱、松は薪、モミは腐りやすく整理対象。広葉樹の<strong>ヤマザクラは薪・燻製材・シイタケのホダ木</strong>（針葉樹はホダ木に使えない）。ホダ木は落葉期に伐採→玉切り→仮伏せ→翌春植菌。</li>
+<li><strong>寒肥</strong>：果樹・宿根に有機質中心の寒肥（12〜2 月）を一年生の土づくりと同時に段取り。</li>
+<li><strong>レモン室内越冬（12〜4 月）</strong>：明るい窓辺で水やり控えめ、葉水でハダニ予防。搬出は遅霜明けの翌 5 月中〜下旬。</li>
+</ul></div></details></div></details></div></details><details class='acc sec' id='sec-llm-guide'><summary>🤖 このサイトをLLMで運用する</summary><div class='acc-body'><details class='acc l2'><summary>まずこれを貼るだけ</summary><div class='acc-body'><p>このダッシュボードと同じ仕組みは、AI（Claude / ChatGPT 等）に手伝ってもらえば自分でも始められる。
+AI に<strong>このページの URL を渡して</strong>、次の一文を送るだけでよい：</p>
+<pre><code>このURLのサイトのようにLLMを用いて庭や畑を管理したい。
+仕組みを読み取って、私用にゼロから立ち上げるのを手伝って。
+</code></pre>
+<p>これだけで AI がこのページを読み、以下の「仕組み」を理解して、あなた専用の記録・分析・公開の流れを一緒に作ってくれる。以降の各セクションは、その AI が読んで再現できるように書いてある。</p></div></details><details class='acc l2'><summary>仕組み（何をやっているか）</summary><div class='acc-body'><p>一言でいうと「<strong>畑の記録を Markdown のテキストで貯め、AI に読み書きさせて、判断と公開を自動化する</strong>」仕組み。核は3つ：</p>
+<ul>
+<li><strong>記録</strong>: 日々の観察・作業を、決まった形のテキスト（Markdown）で1つのリポジトリに貯める。写真より「事実の言語化」を優先する。</li>
+<li><strong>分析</strong>: 気象の実測値を貯め、積算温度（GDD）で「夏まきでも収穫に間に合うか」等を数値で逆算する。失敗は原因を実測で切り分け、来年の「着手条件」に翻訳する。</li>
+<li><strong>公開</strong>: 記録のうち無害な一部だけを、このような1枚の静的 HTML に自動生成して家族へ共有する。個人や場所が特定される情報は、自動チェックで機械的に除外する。</li>
+</ul>
+<p>AI（Claude Code 等のコーディング支援 AI）に「作業手順書」を1ファイル渡しておくと、写真やメモを送るだけで、AI が対象を特定し、記録を追記し、分析し、公開ページまで更新してくれる。人は現場で観察して伝えるだけでよい。</p></div></details><details class='acc l2'><summary>用意するもの</summary><div class='acc-body'><ol>
+<li><strong>記録用のリポジトリ（git）</strong>: テキストを貯める場所。非公開で良い。GitHub の private リポジトリが手軽。</li>
+<li><strong>AI アシスタント</strong>: Claude Code など、ファイルを読み書きできるコーディング支援 AI。手順書に沿ってテキストを更新させる。</li>
+<li><strong>手順書（AI への指示ファイル）</strong>: リポジトリ直下に、記録・分析・公開の手順を1ファイルで書いておく（Claude Code なら <code>CLAUDE.md</code>）。AI は毎回これを読んで同じ流れで動く。</li>
+</ol>
+<p>手順書には最低限これを書いておくと、AI が迷わず回せる：</p>
+<ul>
+<li>記録の置き場所と書式（下の「日々のログ」）</li>
+<li>気象データの取得元と貯め方（下の「データと分析」）</li>
+<li>公開ページに「出してよいもの／絶対に出さないもの」の線引き（下の「公開の作られ方」）</li>
+</ul></div></details><details class='acc l2'><summary>日々のログ</summary><div class='acc-body'><details class='acc l3'><summary>ミニトマト [プランターA]</summary><div class='acc-body'><ul>
+<li>事実: 一段目が色づき始め。下葉が2枚黄化。</li>
+<li>判断: 初収穫は数日内。黄化は生理的な下葉落ちで問題なしと見る。</li>
+<li>
+<p>次: 週明けに収穫。追肥は見送り。
+```</p>
+</li>
+<li>
+<p>語彙のブレを防ぐため、<strong>作物名の一覧</strong>と<strong>場所名の一覧</strong>を別ファイルに持ち、ログはその表記に揃える（AI に「一覧に無ければ追記してから使って」と指示しておく）。</p>
+</li>
+<li>「どの株をどこに植えたか」の台帳、「どの畝に何を作るか」の作付け表（連作を避けるチェック付き）も別ファイルで持つと、AI が現状を把握して次の一手を出せる。</li>
+</ul></div></details></div></details><details class='acc l2'><summary>データと分析</summary><div class='acc-body'><p>体感でなく実測で判断できるように、気象データを貯めて数値モデルで逆算する。</p>
+<ul>
+<li><strong>実測を貯める</strong>: 最寄りの気象観測点の日別データ（平均気温・日照時間・降水量）を、AI に定期的に取得させて <code>thermal-data.tsv</code> のような表に追記する。</li>
+<li><strong>積算温度（GDD）で逆算する</strong>: 「定植から収穫まで」に必要な積算温度を、過去の記録から較正しておく。すると「今から播いて収穫に間に合うか」「収穫はいつ頃終わるか」を数値で答えられる。小さな計算スクリプトを1本持たせておくと AI が呼び出して使う。</li>
+<li><strong>失敗を来年へ渡す</strong>: 徒長・不発芽・生育不良などが出たら、原因を実測（気温・日照・降水）で切り分け、「来年はこの条件を満たしたら着手する」という<strong>月日でなく条件</strong>の形で1件ずつ書き残す。翌年の判断精度がそのぶん上がる。</li>
+</ul>
+<p>要は「観察 → 記録 → 実測で検証 → 来年の着手条件」というループを、AI に回させ続ける。土地固有の年間カレンダーは外部に売っていないので、自分で1〜2年積むしかない。</p></div></details><details class='acc l2'><summary>公開の作られ方（安全に共有する）</summary><div class='acc-body'><p>このダッシュボードは、記録リポジトリから<strong>無害な数ファイルだけ</strong>を取り出し、1枚の静的 HTML に自動生成したもの。安全のために二重の仕組みを入れている：</p>
+<ul>
+<li><strong>許可リスト（allowlist）</strong>: 公開ページに載せてよいファイルをあらかじめ列挙し、それ以外は載せられないようにする。</li>
+<li><strong>禁止パターン検査（denylist）</strong>: 生成した HTML を機械的に走査し、個人や場所が特定される情報・住まいや設備の情報・通信の情報などが1つでも混じっていたら、<strong>発行を止める</strong>。</li>
+<li>検索避け（noindex）を付け、公開リポジトリには履歴を残さず単一コミットで置き換える（ぼかす前の版が履歴に残らないようにするため）。</li>
+</ul>
+<p>この「載せてよいものだけを、機械チェックを通してから出す」線引きを AI の手順書に書いておけば、うっかり機微情報を公開する事故を構造的に防げる。</p>
+<hr />
+<p>作りの詳細まで踏み込みたい場合は、上のプロンプトのあとに「手順書（指示ファイル）のたたき台を書いて」「気象データ取得と積算温度の計算スクリプトの雛形が欲しい」と続ければ、AI が具体的なファイルまで用意してくれる。</p></div></details></div></details></main><footer>庭の記録から自動生成。見たい項目をタップで開いてください。</footer><a class='totop' href='#'>↑ 上へ</a><script>function openTo(hash){if(!hash)return;var el=document.getElementById(hash.slice(1));if(!el)return;var n=el;while(n){if(n.tagName==='DETAILS')n.open=true;n=n.parentElement;}if(el.tagName==='DETAILS')el.open=true;el.scrollIntoView({block:'start'});}document.addEventListener('click',function(e){var a=e.target.closest('a[href^="#sec-"]');if(!a)return;e.preventDefault();var h=a.getAttribute('href');if(history.replaceState)history.replaceState(null,'',h);openTo(h);});window.addEventListener('hashchange',function(){openTo(location.hash);});window.addEventListener('DOMContentLoaded',function(){if(location.hash)openTo(location.hash);});</script></body></html>
