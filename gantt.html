@@ -1,0 +1,1576 @@
+<!doctype html><html lang='ja'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><meta name='robots' content='noindex,nofollow'><meta name='description' content='家庭菜園を Markdown の記録と AI（LLM）で運用し、気象実測と積算温度で判断し、無害な範囲だけを自動公開する仕組みのダッシュボード。同じ仕組みを始めたい場合は、AI にこのページの URL を渡して「このURLのサイトのようにLLMを用いて庭や畑を管理したい」と送ると、AI が仕組みを読み取り、GitHub のリポジトリ作成から公開まで立ち上げを手伝います。詳しくは末尾の「🤖 コピペ用 ― AI × GitHub × 畑」を参照。'><title>うちの畑 ― 作付けガント</title><script>if(/(^|\.)github\.io$/.test(location.hostname)){var s=document.createElement('script');s.async=true;s.src='https://www.googletagmanager.com/gtag/js?id=G-X5WQCB3JYT';document.head.appendChild(s);window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-X5WQCB3JYT');}</script><style>
+/* =============================================================================
+   家族ページの見た目〔2026-08-18 全面改訂・本人「web app のようなフレームワークを
+   用いてるかのような」〕。
+
+   ★方針＝**Bootstrap 5 の設計を手書きの CSS で写す**（ライブラリ本体は読み込まない）。
+     ①トークン（色・角丸・影・間隔）を1か所に置く ②画面は**アプリシェル**
+     （狭い＝上帯＋drawer／広い＝左サイドバー＋本文）③中身は**カード／アコーディオン／
+     テーブル／バッジ**の4部品だけで組む。
+   ⚠️**CDN も npm も使わない**＝発行物は単一 HTML で自己完結（公開ゲートが外部参照を
+     許さない・file:// でも同じに見える必要がある）。Bootstrap を読み込むには本文へ
+     クラスを撒く必要があるが、本文は .md から機械生成しているので**クラスを持てない**
+     ＝素の要素（table・details・h2…）に効く CSS の方が仕様に合う。
+   構成: ①トークン ②アプリシェル ③カードとアコーディオン ④表 ⑤小物 ⑥report 専用
+   ============================================================================= */
+
+/* ── ① トークン ─────────────────────────────────────────────────────────── */
+:root {
+  color-scheme: light dark;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Hiragino Sans", "Noto Sans JP", sans-serif;
+  /* 面と文字 */
+  --bg:#eef1f5; --card:#fff; --card-head:#f8f9fa; --fg:#1f2328; --muted:#6c757d;
+  --line:#dee2e6; --line-soft:#eceff2; --line-strong:#ced4da;
+  /* 主色（Bootstrap の success を基準にした緑）とリンク */
+  --brand:#198754; --brand-dark:#146c43; --chip:#e7f3ec; --chipfg:#0f5132;
+  --accent:var(--brand);
+  --link:#0d6efd;
+  /* サイドバー（広い画面） */
+  --side-bg:#12291d; --side-fg:#d7e6dd; --side-line:#ffffff1f; --side-w:266px;
+  /* 表 */
+  --thbg:#eef1f4; --thfg:#343a40; --tline:#e4e8ec; --zebra:#f8f9fa; --hover:#eaf2fd;
+  --row-food:#effaf2; --row-orn:#f1f3f5;
+  --warm-bg:#fff3cd; --warm-fg:#664d03;
+  --cbtodo:#adb5bd; --cbdone:#198754;
+  /* 形 */
+  --r:.375rem; --r-lg:.75rem; --pill:50rem; --card-pad:16px;
+  --sh-sm:0 1px 2px #10182808, 0 1px 3px #1018280f;
+  --sh:0 6px 16px #10182814;
+  --content:1120px;
+}
+* { box-sizing: border-box; }
+body { margin: 0; font-family: var(--font); font-size: 15px; line-height: 1.65;
+       color: var(--fg); background: var(--bg); -webkit-text-size-adjust: 100%; }
+:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; border-radius: 3px; }
+
+/* ── ② アプリシェル ─────────────────────────────────────────────────────
+   狭い画面（〜991px）＝上に固定の帯＋☰ で drawer。
+   広い画面（992px〜）＝**左サイドバー**（ページ一覧とページ内の目次を縦に並べる）。
+   ⚠️DOM は共通（header.top ＞ .bar / nav.gnav / nav.ptoc）＝並べ替えは CSS だけでやる。
+   ⚠️drawer を自動で閉じる JS の matchMedia もこの 992px に合わせてある（片方だけ動かさない）。 */
+header.top { position: sticky; top: 0; z-index: 1030; background: var(--brand);
+             box-shadow: 0 1px 3px #00000026; }
+header.top .bar { display: flex; align-items: center; gap: 10px; padding: 9px 14px; min-height: 56px; }
+header.top .title { color: #fff; font-weight: 700; font-size: 15.5px; flex: 1 1 auto; min-width: 0; line-height: 1.3; }
+header.top .title .siteurl { color: #ffffffcc; font-weight: 400; font-size: 11px;
+  text-decoration: none; word-break: break-all; display: block; margin: 2px 0 0; }
+header.top .title .siteurl:hover { color: #fff; text-decoration: underline; }
+/* ボタン＝Bootstrap の btn-outline-light 相当 */
+.menu-btn { flex: 0 0 auto; appearance: none; border: 1px solid #ffffff8c; background: transparent; color: #fff;
+  font: inherit; font-size: 13px; font-weight: 600; padding: 7px 12px; border-radius: var(--r); cursor: pointer;
+  min-height: 38px; }
+.menu-btn:hover, .menu-btn:active, .menu-btn[aria-expanded="true"] { background: #fff; color: var(--brand-dark); }
+/* 帯の中ではナビを出さない（＝横スクロールするナビを作らない）。出すのはサイドバーだけ */
+nav.gnav, nav.ptoc { display: none; }
+
+@media (min-width: 992px) {
+  body:not(.p-report) header.top { position: fixed; top: 0; left: 0; bottom: 0; width: var(--side-w);
+    display: flex; flex-direction: column; overflow-y: auto; background: var(--side-bg);
+    border-right: 1px solid var(--line); box-shadow: none; }
+  body:not(.p-report) header.top .bar { flex-direction: column; align-items: flex-start; gap: 2px;
+    padding: 18px 16px 14px; border-bottom: 1px solid var(--side-line); }
+  body:not(.p-report) header.top .title { font-size: 17px; }
+  body:not(.p-report) header.top .title .siteurl { color: #ffffff8a; font-size: 10.5px; }
+  body:not(.p-report) .menu-btn { display: none; }
+  /* サイドバーの2グループ＝上「ページ」／下「このページの中」。見た目で役割を分ける
+     （塗りつぶし＝現在のページ／左の罫＝ページ内の見出し） */
+  body:not(.p-report) nav.gnav, body:not(.p-report) nav.ptoc { display: flex; flex-direction: column; }
+  body:not(.p-report) nav.gnav { gap: 2px; padding: 12px 10px; }
+  body:not(.p-report) nav.gnav a { color: var(--side-fg); text-decoration: none; font-size: 13.5px; font-weight: 600;
+    padding: 9px 12px; border-radius: var(--r); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  body:not(.p-report) nav.gnav a:hover { background: #ffffff14; color: #fff; }
+  body:not(.p-report) nav.gnav a[aria-current="page"] { background: var(--brand); color: #fff; }
+  body:not(.p-report) nav.gnav .gsep, body:not(.p-report) nav.ptoc .psep {
+    color: #ffffff73; font-size: 10.5px; font-weight: 700; letter-spacing: .08em;
+    padding: 12px 12px 4px; }
+  body:not(.p-report) nav.ptoc { gap: 1px; padding: 4px 10px 20px; border-top: 1px solid var(--side-line); }
+  body:not(.p-report) nav.ptoc a { color: #ffffffb3; text-decoration: none; font-size: 13px; font-weight: 500;
+    padding: 7px 12px; border-left: 2px solid transparent; border-radius: 0 var(--r) var(--r) 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  body:not(.p-report) nav.ptoc a:hover { color: #fff; background: #ffffff12; border-left-color: var(--brand); }
+  body:not(.p-report) main, body:not(.p-report) footer { margin-left: var(--side-w); margin-right: auto;
+    max-width: var(--content); padding-left: 28px; padding-right: 28px; }
+  body:not(.p-report) main { padding-top: 24px; }
+}
+
+/* ── ページ内クイックナビ（nav.qnav）〔本人 2026-08-20〕────────────────────────
+   狭い画面（〜991px）で ☰ の中にしか無かった「このページの中」を、帯の直下に**常駐**させる。
+   header.top の直後に置き、自分が sticky（top＝帯の実高さ --bar）＝576px〜991px で帯と一緒に残る。
+   ★575px 以下（スマホ）は2段に折れて帯と合わせ約150px を占めるので sticky にしない（上に出て流れる・☰ は残る）。
+   ★JS が --bar（帯）と --hdr（帯＋sticky のときのナビ）を写す＝アンカーへ飛んでも見出しが隠れない。
+   ★ページ内ナビとわかる意匠＝見出しラベル「このページ内 ↓」＋丸いピル（Bootstrap nav-pills 相当）＋
+     スクロールで今いる節のピルだけ白く塗る（scrollspy・aria-current=location）。
+   ★横スクロールするナビは作らない＝折り返す（flex-wrap）。サイドバー（992px〜）では nav.ptoc が同じ役＝出さない。 */
+nav.qnav { position: sticky; top: var(--bar, 56px); z-index: 1020; display: flex; flex-wrap: wrap; align-items: center;
+  gap: 6px; padding: 7px 12px 8px; background: var(--brand-dark); border-top: 1px solid #ffffff2e;
+  box-shadow: 0 1px 3px #00000026; }
+@media (max-width: 575px) { nav.qnav { position: static; } }
+nav.qnav .qlab { color: #ffffffb3; font-size: 10.5px; font-weight: 700; letter-spacing: .08em; white-space: nowrap; margin-right: 2px; }
+nav.qnav a { display: inline-flex; align-items: center; color: #fff; text-decoration: none; font-size: 12.5px; font-weight: 600;
+  padding: 4px 11px; border: 1px solid #ffffff80; border-radius: var(--pill); white-space: nowrap; line-height: 1.45; }
+nav.qnav a:hover { background: #ffffff24; }
+nav.qnav a[aria-current="location"] { background: #fff; color: var(--brand-dark); border-color: #fff; }
+@media (min-width: 992px) { body:not(.p-report) nav.qnav { display: none; } }
+/* 節見出しのアイキャッチ（小さな絵・SECTION_EYECATCH）＝文字で伝わらない中身（ガント）を絵で予告する */
+summary .eyecatch { flex: 0 0 auto; display: block; background: #fdfdfb; border: 1px solid var(--line);
+  border-radius: 4px; padding: 2px 3px; box-sizing: content-box; }
+
+/* drawer（狭い画面のメニュー）。JS で hidden を外す。リンクを押す・背景を押す・Esc で閉じる */
+.drawer { position: fixed; inset: 0; z-index: 1045; }
+.drawer[hidden] { display: none; }
+.drawer .drawer-backdrop { position: absolute; inset: 0; background: #10182899; }
+.drawer .drawer-panel { position: absolute; top: 0; right: 0; bottom: 0; width: min(86vw, 340px);
+  background: var(--side-bg); color: var(--side-fg); overflow-y: auto; -webkit-overflow-scrolling: touch;
+  box-shadow: -2px 0 16px #00000040; padding: 0 0 28px; }
+.drawer .drawer-head { position: sticky; top: 0; display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; padding: 12px 12px 12px 16px; background: var(--side-bg); color: #fff; font-weight: 700;
+  border-bottom: 1px solid var(--side-line); }
+.drawer .drawer-close { appearance: none; border: 1px solid #ffffff59; background: transparent; color: #fff;
+  font: inherit; font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: var(--r); cursor: pointer; min-height: 38px; }
+.drawer .drawer-close:hover { background: #fff; color: var(--side-bg); }
+.drawer h2, .drawer h3 { font-size: 10.5px; color: #ffffff73; letter-spacing: .08em; font-weight: 700;
+  margin: 16px 16px 4px; }
+.drawer ul { list-style: none; margin: 0; padding: 0 10px; }
+.drawer li a { display: block; padding: 10px 12px; text-decoration: none; color: var(--side-fg); font-weight: 600;
+  font-size: 14px; border-radius: var(--r); }
+.drawer li a:active, .drawer li a:hover { background: #ffffff14; color: #fff; }
+/* drawer の「このページ」＝サイドバーの nav.ptoc と同じ扱い＝一段内側・細字・左に罫 */
+.drawer ul.dsec li a { font-weight: 500; font-size: 13.5px; color: #ffffffb3;
+  border-left: 2px solid #ffffff26; border-radius: 0 var(--r) var(--r) 0; padding-left: 14px; }
+.drawer ul.dsec li a:hover { border-left-color: var(--brand); }
+.drawer li a[aria-current="page"] { background: var(--brand); color: #fff; }
+body.menu-open { overflow: hidden; }
+main { max-width: var(--content); margin: 0 auto; padding: 14px 12px 84px; }
+@media (max-width: 575px) { :root { --card-pad: 12px; } main { padding: 12px 10px 84px; } }
+
+/* ── ③ カードとアコーディオン ───────────────────────────────────────────
+   節（最上位）＝**カード**（白地・薄い枠・小さい影・見出しは card-header）。
+   その下の見出し＝**アコーディオンの行**（カードの中に罫で区切って積む＝入れ子の箱を作らない）。 */
+details.acc, div.leaf { scroll-margin-top: calc(var(--hdr, 60px) + 12px); }
+details.acc > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px;
+  user-select: none; }
+details.acc > summary::-webkit-details-marker { display: none; }
+details.acc > summary::before { content: "›"; color: var(--muted); font-size: 15px; line-height: 1; flex: 0 0 auto;
+  transition: transform .15s ease; transform: rotate(90deg); }
+details.acc[open] > summary::before { transform: rotate(270deg); }
+
+/* 節＝カード */
+details.acc.sec, div.leaf.sec { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg);
+  box-shadow: var(--sh-sm); margin: 0 0 14px; overflow: hidden; }
+details.acc.sec > summary { padding: 13px 16px; font-size: 15.5px; font-weight: 700; color: var(--fg);
+  background: var(--card-head); box-shadow: inset 3px 0 0 var(--brand); min-height: 52px; }
+details.acc.sec[open] > summary { border-bottom: 1px solid var(--line); }
+details.acc.sec > summary:hover { background: #f1f3f5; }
+details.acc.sec > .acc-body { padding: 4px var(--card-pad) 14px; }
+
+/* 節の中の見出し（l2）＝Bootstrap の accordion と同じ「カード幅いっぱいの行」。
+   ★入れ子の箱・縦の罫を作らない＝負のマージンでカードの内側余白を打ち消し、
+   開いている行だけ地色を付けて「いま見ている場所」を示す。 */
+details.acc.l2 { border-top: 1px solid var(--line-soft); margin: 0 calc(var(--card-pad) * -1); }
+details.acc.sec > .acc-body > details.acc.l2:first-child,
+details.acc.sec > .acc-body > *:first-child + details.acc.l2 { border-top: 0; }
+details.acc.l2 > summary { padding: 11px var(--card-pad); font-size: 14.5px; font-weight: 700; }
+details.acc.l2[open] > summary { background: var(--chip); color: var(--chipfg); }
+details.acc.l2 > summary:hover { background: var(--card-head); }
+details.acc.l2[open] > summary:hover { background: var(--chip); }
+details.acc.l2 > .acc-body { padding: 8px var(--card-pad) 14px; }
+/* さらに下（l3 以下）＝細字・小さめ。ここまで来たら箱にしない */
+details.acc.l3, details.acc.l4, details.acc.l5 { margin: 2px 0; }
+details.acc.l3 > summary, details.acc.l4 > summary, details.acc.l5 > summary {
+  padding: 7px 2px; font-size: 13.5px; font-weight: 600; color: var(--fg); }
+details.acc.l3 > .acc-body, details.acc.l4 > .acc-body, details.acc.l5 > .acc-body {
+  padding: 0 0 8px 12px; border-left: 2px solid var(--line-soft); margin-left: 3px; }
+details.acc.sub > summary, details.acc.info > summary { color: var(--link); font-weight: 600; font-size: 13.5px; }
+details.acc.info { border: 1px dashed var(--line); border-radius: var(--r); margin: 8px 0; }
+details.acc.info > summary { padding: 9px 12px; }
+details.acc.info > .acc-body { padding: 0 12px 10px; border: 0; margin: 0; }
+/* 図（.md に直接置いた SVG を minimd が素通しする）。横に長い図はこの中でスクロールさせる */
+.figure { overflow-x: auto; margin: 12px 0; }
+/* ★図は縮めずスクロールさせる（表と同じ作法）。375px 幅まで縮むと注記の文字が読めなくなる */
+.figure svg { display: block; min-width: 520px; width: 100%; height: auto; }
+/* 素の <details>（ドキュメント本文が直接書くアコーディオン。TODO の「1行＋詳細は畳む」原則） */
+details:not(.acc) { border-left: 2px solid var(--line); border-radius: 0 var(--r) var(--r) 0; margin: 6px 0 6px 2px;
+              padding: 0 0 0 10px; scroll-margin-top: calc(var(--hdr, 60px) + 12px); }
+details:not(.acc) > summary { cursor: pointer; list-style: none; padding: 6px 2px; min-height: 36px;
+              display: flex; align-items: flex-start; gap: 7px; user-select: none; color: var(--link); font-size: 13.5px; }
+details:not(.acc) > summary::-webkit-details-marker { display: none; }
+details:not(.acc) > summary::before { content: "›"; color: var(--muted); font-size: 14px; flex: 0 0 auto;
+              line-height: 1.6; transform: rotate(90deg); transition: transform .15s ease; }
+details:not(.acc)[open] > summary::before { transform: rotate(270deg); }
+details:not(.acc)[open] { border-left-color: var(--brand); }
+details:not(.acc) > :not(summary) { margin-left: 4px; }
+.leaf { padding: 13px 16px; font-weight: 700; }
+.acc-body > p:first-child, .acc-body > ul:first-child { margin-top: 4px; }
+/* バッジ（更新日）＝Bootstrap の badge rounded-pill 相当 */
+.upd { font-weight: 700; font-size: 11px; color: var(--chipfg); background: var(--chip); border-radius: var(--pill);
+       padding: 2px 9px; margin-left: auto; white-space: nowrap; }
+
+/* 進め方の点検（PM 向けの要約カード）＝表を使わない1枚・KPI（達成率）／アラート（管理の漏れ＝⏰・🙋・⏳・🛒）／
+   リスク（試作）の3行〔本人 2026-08-20〕。PMBOK 6/7 の分布行は削除した（意味が伝わらない・詳細は「くわしく ↗」）。
+   各バッジはその数字が載っている節へのページ内リンク（カードは写しを持たない＝件数だけ）。 */
+.pmbok-signal { display: flex; flex-direction: column; gap: 6px; margin: 0 0 14px;
+  padding: 11px 14px 12px; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg);
+  box-shadow: var(--sh-sm); font-size: 12.5px; color: var(--muted); }
+.pmbok-signal .ps-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pmbok-signal .ps-title { color: var(--fg); font-weight: 700; font-size: 14px; }
+.pmbok-signal .ps-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.pmbok-signal .ps-k { flex: 0 0 auto; min-width: 4.5em; font-size: 10.5px; font-weight: 700; letter-spacing: .06em; color: var(--muted); }
+.pmbok-signal .ps-badge { display: inline-block; padding: 2px 10px; border-radius: var(--pill); background: var(--zebra);
+  border: 1px solid var(--line); white-space: nowrap; font-weight: 600; color: var(--fg); text-decoration: none; }
+a.ps-badge:hover { border-color: var(--link); color: var(--link); }
+.pmbok-signal .ps-ok { background: var(--chip); color: var(--chipfg); border-color: transparent; }
+.pmbok-signal .ps-warn { background: #f8d7da; color: #842029; border-color: transparent; }
+.pmbok-signal .ps-link { margin-left: auto; white-space: nowrap; }
+
+/* ---- 収穫予定 ---- */
+.hv-note { color: var(--muted); font-size: 12.5px; margin: 2px 0 10px; }
+.hv-note p { margin: 4px 0; }
+.hv-note blockquote { margin: 6px 0; font-size: 12.5px; }
+.hv { display: grid; grid-template-columns: 4.2em 1fr; gap: 4px 12px; padding: 9px 2px;
+      border-top: 1px solid var(--line-soft); }
+.hv:first-of-type { border-top: none; }
+.hv .hm { font-weight: 700; font-size: 13.5px; }
+.hv .hm a { color: var(--chipfg); text-decoration: none; } .hv .hm a:hover { text-decoration: underline; }
+.hv .hi { font-size: 13.5px; }
+.hv-extra { margin: 12px 0 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r);
+  background: var(--card-head); }
+.hv-extra .he-title { font-weight: 700; font-size: 13px; margin-bottom: 4px; }
+.hv-extra ul { margin: 4px 0; } .hv-extra li { margin: 2px 0; font-size: 13px; }
+
+/* ---- 月カレンダー ---- */
+.month-nav { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 14px; }
+.month-nav a { flex: 0 0 auto; text-decoration: none; font-weight: 600; font-size: 13px; color: var(--chipfg);
+               background: var(--card); border: 1px solid var(--line); border-radius: var(--r);
+               padding: 7px 12px; min-width: 44px; text-align: center; }
+.month-nav a:active, .month-nav a:hover { background: var(--chip); border-color: var(--brand); }
+details.acc.month > summary { font-weight: 700; font-size: 14.5px; }
+.sum { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 2px 0 6px; }
+.sum .k { font-weight: 700; font-size: 11px; padding: 3px 8px; border-radius: var(--pill); white-space: nowrap;
+          height: fit-content; }
+.sum .k.care { color: #664d03; background: var(--warm-bg); }
+.sum .k.act { color: var(--chipfg); background: var(--chip); }
+.sum .v ul { margin: 0; padding-left: 18px; } .sum .v ul li { margin: 1px 0; }
+
+/* ── ④ 表 ───────────────────────────────────────────────────────────────
+   Bootstrap の .table＝**縦罫は薄く・横罫で読ませる・ヘッダは地色つき**。
+   ★ラッパ(.tw)で横スクロールさせ、table は縮めない
+   （table 自身に display:block を掛けると親幅まで縮んで列が1文字ずつ折り返す）*/
+.tw { position: relative; overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; margin: 10px 0 16px;
+      border: 1px solid var(--line); border-radius: var(--r); background: var(--card); }
+.tw table { margin: 0; border: 0; border-radius: 0; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th, td { padding: 9px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--tline);
+         word-break: normal; overflow-wrap: anywhere; }
+th + th, td + td { border-left: 1px solid var(--line-soft); }
+/* ヘッダ行＝列の意味。地色と下の太い罫で必ず見えるようにする */
+thead th, tr:first-child th { background: var(--thbg); color: var(--thfg); font-weight: 700; font-size: 12px;
+        letter-spacing: .02em; border-bottom: 2px solid var(--line-strong); white-space: nowrap; }
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr:nth-child(2n) td { background: var(--zebra); }
+tbody tr:hover td { background: var(--hover); }
+/* 鉢・プランター表の行分け（<!-- row:food/ornamental -->＝minimd.py が <tr class> にする）。
+   食用はやや明るく・観賞用はやや暗く＝zebra/hover より後ろに置いて優先させる */
+tbody tr.food td { background: var(--row-food); }
+tbody tr.ornamental td { background: var(--row-orn); }
+/* 特定セルだけの強調（<!-- cellN:xxx -->＝minimd.py が <td class> にする）。
+   行の背景色より優先させたいので、詳細度をわざと1段上げて（tr td.warm）後ろに置く */
+tbody tr td.warm { background: var(--warm-bg); color: var(--warm-fg); font-weight: 700; }
+/* 1列目（済・畝）は折り返さない＝行の主語と印がつぶれない。
+   ⚠️font-weight はここに置かない〔2026-08-11〕＝**毎行かならず来る列を CSS で太らせると、
+   マークダウン側で `**` を外しても画面は太字のまま**になる（規約[37]が効かない）。
+   実際この2行のせいで「どこで何を？の太字が治っていない」と見えた。 */
+tbody td:first-child { white-space: nowrap; }
+/* ★#148: 1列目が長文の表（wrap_tables が12全角字超で付ける .wrap1）は折り返してよい＝
+   nowrap のままだと1列目が親幅の大半を取り、他の列が1〜2字幅に潰れる（手配の表で実測） */
+table.wrap1 tbody td:first-child { white-space: normal; }
+/* ★#148: 8字以上のセルを持つ列の床（wrap_tables が列ごとに .fN を付ける）＝長文の隣の短い列
+   （価格・入手先）が1〜2字幅に潰れない。td の min-width は列の最小幅として効き、余白の配分は
+   内容比例のまま（<col width> だと均等配分になる＝実測） */
+table.f1 td:nth-child(1) { min-width: 87px; }
+table.f2 td:nth-child(2) { min-width: 87px; }
+table.f3 td:nth-child(3) { min-width: 87px; }
+table.f4 td:nth-child(4) { min-width: 87px; }
+table.f5 td:nth-child(5) { min-width: 87px; }
+table.f6 td:nth-child(6) { min-width: 87px; }
+table.f7 td:nth-child(7) { min-width: 87px; }
+table.f8 td:nth-child(8) { min-width: 87px; }
+table.f9 td:nth-child(9) { min-width: 87px; }
+table.f10 td:nth-child(10) { min-width: 87px; }
+table.f11 td:nth-child(11) { min-width: 87px; }
+table.f12 td:nth-child(12) { min-width: 87px; }
+table.f13 td:nth-child(13) { min-width: 87px; }
+table.f14 td:nth-child(14) { min-width: 87px; }
+table.f15 td:nth-child(15) { min-width: 87px; }
+table.f16 td:nth-child(16) { min-width: 87px; }
+/* TODO の表＝「印は狭く・場所は折り返さず・やることと条件は広く」 */
+.todo-tbl th:first-child, .todo-tbl td:first-child { width: 2.6em; text-align: center; padding-left: 4px; padding-right: 4px; }
+.todo-tbl td:nth-child(2) { white-space: nowrap; }
+.todo-tbl th:nth-child(3), .todo-tbl td:nth-child(3) { min-width: 200px; }
+.todo-tbl th:nth-child(n+4), .todo-tbl td:nth-child(n+4) { min-width: 190px; }
+/* 期限の列は折り返さない。⚠️4列目が期限なのは**5列以上の表（やり残し）だけ**で、
+   「今日」の表の4列目は GO条件＝ここを一律 nowrap にすると、いちばん読みたい列が
+   画面の外へ流れる（2026-08-18 実測・PC 幅でも GO条件が切れていた）。 */
+.todo-tbl tr:has(td:nth-child(5)) td:nth-child(4) { white-space: nowrap; }
+/* 期限つき（やり残し）は日付も折り返さない */
+.todo-tbl td:nth-child(2):has(+ td) { white-space: nowrap; }
+/* ★横スクロールできることを見せる（列が画面外にあると気づけない）*/
+.tw { background:
+      linear-gradient(to left, var(--card), transparent) right / 20px 100% no-repeat,
+      linear-gradient(to left, #10182814, transparent) right / 10px 100% no-repeat,
+      var(--card); }
+.tw::after { content: "→"; position: absolute; right: 3px; top: 7px; font-size: 11px;
+             color: var(--muted); pointer-events: none; }
+
+/* ★横に広い表（畝別早見表・育苗状況）の「詳細」＝行ごとの断片を共有モーダルへ移す〔本人 2026-08-19・2026-08-22〕。
+   一覧は4列＋ボタン、全列は .dd-src（hidden・高さ0）が持つ。開く＝JS が中身を <dialog class="dd"> へ移す・
+   閉じたら戻す（写しを作らない）。≤640px は全画面シート。
+   ⚠️色は :root のトークンだけを使う（ダークは ① で差し替わる）。列に font-weight は置かない。*/
+.bd-more { font: inherit; font-size: .86em; line-height: 1.2; padding: 4px 10px;
+           border: 1px solid var(--line-strong); border-radius: var(--pill);
+           background: var(--card-head); color: var(--link); cursor: pointer; white-space: nowrap; }
+.bd-more:hover { background: var(--hover); }
+.bd-more-c { text-align: center; }
+dialog.dd { padding: 0; border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--sh);
+            width: min(720px, 94vw); max-width: min(720px, 94vw); max-height: 92vh;
+            background: var(--card); color: var(--fg); flex-direction: column; overflow: hidden; }
+dialog.dd[open] { display: flex; }
+dialog.dd::backdrop { background: #00000073; }
+.dd-hd { display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px;
+         border-bottom: 1px solid var(--tline); background: var(--card-head); }
+.dd-t { flex: 1; min-width: 0; }
+.dd-crumb { font-size: .78em; color: var(--muted); margin-bottom: 2px; }
+.dd-title { margin: 0; font-size: 1.05em; line-height: 1.4; font-weight: 700; }
+.dd-x { flex: none; width: 34px; height: 34px; border-radius: var(--pill); border: 1px solid var(--line-strong);
+        background: var(--card); color: var(--fg); font: inherit; font-size: 18px; line-height: 1; cursor: pointer;
+        display: flex; align-items: center; justify-content: center; }
+.dd-x:hover { background: var(--hover); }
+.dd-body { overflow: auto; padding: 4px 14px 16px; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+.dd-ft { display: flex; justify-content: flex-end; padding: 8px 14px; border-top: 1px solid var(--tline);
+         background: var(--card-head); }
+.dd-ft button { font: inherit; font-size: .92em; font-weight: 700; border-radius: var(--pill); padding: 8px 18px; cursor: pointer;
+                border: 1px solid var(--line-strong); background: var(--card); color: var(--fg); }
+.dd-ft button:hover { background: var(--hover); }
+body.dd-open { overflow: hidden; }
+@media (max-width: 640px) {
+  dialog.dd { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; border: 0; margin: 0; inset: 0; }
+  .dd-ft { padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
+}
+.bdd-dl { margin: 0; }
+.bdd-dl dt { margin: 12px 0 2px; font-size: .82em; color: var(--muted); }
+.bdd-dl dd { margin: 0; }
+
+/* ── ⑤ 小物 ─────────────────────────────────────────────────────────────*/
+h2,h3,h4 { line-height: 1.35; margin: 14px 0 6px; }
+h2 { font-size: 1.05em; } h3,h4 { font-size: 1em; }
+ul, ol { margin: 4px 0; padding-left: 20px; } li { margin: 2px 0; }
+del { color: var(--muted); }
+/* チェックボックス＝絵文字より大きく・色を付ける */
+.cb { display: inline-block; font-size: 1.25em; line-height: 1; vertical-align: -1px; }
+.cb.todo { color: var(--cbtodo); }
+.cb.done { color: var(--cbdone); }
+code { background: var(--zebra); border: 1px solid var(--line-soft); padding: .1em .4em; border-radius: var(--r);
+       font-size: 85%; }
+pre { background: var(--card-head); border: 1px solid var(--line); padding: 14px; border-radius: var(--r);
+      overflow-x: auto; position: relative; }
+pre code { background: none; border: 0; padding: 0; }
+.copy-btn { position: absolute; top: 8px; right: 8px; font-size: 11px; font-weight: 700;
+            padding: 5px 10px; border-radius: var(--r); border: 1px solid var(--line); background: var(--card);
+            color: var(--link); cursor: pointer; box-shadow: var(--sh-sm); }
+.copy-btn:hover { background: var(--hover); } .copy-btn:active { transform: translateY(1px); }
+blockquote { margin: 8px 0; padding: 6px 14px; border-left: 3px solid var(--line); color: var(--muted);
+             background: var(--zebra); border-radius: 0 var(--r) var(--r) 0; }
+img { max-width: 100%; height: auto; }
+a { color: var(--link); }
+footer { max-width: var(--content); margin: 0 auto; padding: 8px 14px 40px; color: var(--muted); font-size: 12px; }
+/* ★表の文字に重なって読めなくなるので小さく・半透明に（2026-07-30 実機確認）*/
+.totop { position: fixed; right: 12px; bottom: 12px; background: var(--brand); color: #fff; text-decoration: none;
+         border-radius: var(--pill); padding: 9px 14px; font-size: 12px; font-weight: 600;
+         box-shadow: var(--sh); opacity: .82; }
+.totop:hover, .totop:active { opacity: 1; background: var(--brand-dark); }
+
+/* ── ダークモード（Bootstrap 5.3 の dark トークンに寄せる）──────────────*/
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#0f1216; --card:#171b21; --card-head:#1c2128; --fg:#e6edf3; --muted:#9aa4ae;
+          --line:#2b323b; --line-soft:#242a32; --line-strong:#3a424c;
+          --brand:#2ea043; --brand-dark:#238636; --chip:#12291d; --chipfg:#5fd07d;
+          --link:#6ea8fe;
+          --side-bg:#0b0f13; --side-fg:#c7d3cb; --side-line:#ffffff14;
+          --thbg:#1f262e; --thfg:#adbac7; --tline:#262d35; --zebra:#ffffff06; --hover:#ffffff0f;
+          --row-food:#12291d; --row-orn:#1b1f25;
+          --warm-bg:#4a3505; --warm-fg:#ffd97d;
+          --cbtodo:#6e7781; --cbdone:#3fb950;
+          --sh-sm:0 1px 2px #0006; --sh:0 6px 16px #0009; }
+  details.acc.sec > summary:hover { background: #222831; }
+  .pmbok-signal .ps-warn { background: #4a1418; color: #ff9b9b; }
+  .sum .k.care { color: var(--warm-fg); background: var(--warm-bg); }
+  .menu-btn:hover, .menu-btn:active, .menu-btn[aria-expanded="true"] { background: #fff; color: #0f1216; }
+  .tw { background:
+        linear-gradient(to left, var(--card), transparent) right / 20px 100% no-repeat,
+        linear-gradient(to left, #00000059, transparent) right / 10px 100% no-repeat,
+        var(--card); }
+}
+
+/* ── ⑥ report.html（現況報告）専用 ― 余白の多い読み物レイアウト ────────────
+   アコーディオン UI を使わないページなので、行間・字間・節間を広く取り、
+   1カラム・約41remに絞って上から読ませる。ダッシュボード側の見た目には触れない。 */
+body.p-report { font-size: 17px; background: var(--card); }
+body.p-report main { max-width: 41rem; margin: 0 auto; padding: 1.5rem 1.4rem 7rem; }
+body.p-report .prose h1 { font-size: clamp(2rem, 7vw, 3rem); font-weight: 700;
+  letter-spacing: -0.02em; line-height: 1.2; text-align: center; margin: 3.5rem 0 2.5rem; }
+body.p-report .prose h2 { font-size: clamp(1.45rem, 4.5vw, 1.9rem); font-weight: 700;
+  letter-spacing: -0.01em; line-height: 1.35; margin: 4.5rem 0 1.2rem; border: none; }
+body.p-report .prose p { line-height: 2.0; margin: 1.2rem 0; }
+body.p-report .prose li { line-height: 1.9; margin: .5rem 0; }
+body.p-report .prose ol, body.p-report .prose ul { padding-left: 1.4rem; }
+body.p-report .prose blockquote { border: none; background: none; padding: 0 .5rem; margin: 2.5rem 0;
+  color: var(--muted); font-size: 1.12em; line-height: 2.0; text-align: left; }
+body.p-report .prose table { font-size: .95em; }
+/* 報告の表は2列（なに／いま・時期／なにが起きたか）＝wrap_tables の一律 min-width:560px だと
+   スマホ幅で最初の表（いまの数字）が横スクロールになる〔#142・shot で実測 親341/表560〕。
+   読み物ページの2列表は親幅に収めて折り返させる（inline style に勝つため !important）。 */
+body.p-report .prose table.tbl { min-width: 0 !important; width: 100%; table-layout: fixed; }
+body.p-report .prose table.tbl td:first-child, body.p-report .prose table.tbl th:first-child { width: 52%; }
+body.p-report .prose table.tbl td, body.p-report .prose table.tbl th { white-space: normal; overflow-wrap: anywhere; }
+body.p-report .prose .tw { margin: 2rem 0; }
+body.p-report header.top { position: static; box-shadow: none; background: var(--card);
+  border-bottom: 1px solid var(--line); }
+body.p-report header.top .title { color: var(--fg); }
+body.p-report footer { margin-top: 4rem; }
+</style></head><body class='p-gantt'><header class='top'><div class='bar'><div class='title'>🗓 作付けガント <a class='siteurl' href='https://uminomae.github.io/garden/kazokuyo.html'>https://uminomae.github.io/garden/kazokuyo.html</a></div><button type='button' class='menu-btn' aria-expanded='false' aria-controls='site-menu'>☰ メニュー</button></div><nav class='gnav' aria-label='ページ'><a href='kazokuyo.html'>🌱 ダッシュボード</a><a href='gantt.html' aria-current='page'>🗓 作付けガント</a><a href='notes.html'>📖 手順と判断</a><a href='items.html'>📇 品目別</a><a href='report.html'>🌿 現況報告</a><span class='gsep' aria-hidden='true'>その他</span><a href='kiwi.html'>🥝 キウイ棚</a><a href='kazokuyo.html#sec-llm-guide'>🤖 AI 再現ガイド</a><a href='https://uminomae.github.io/hatake-note/' target='_blank' rel='noopener noreferrer'>📊 進め方の点検（PM向け） ↗</a></nav></header><div id='site-menu' class='drawer' hidden><div class='drawer-backdrop'></div><div class='drawer-panel' role='dialog' aria-modal='true' aria-label='メニュー'><div class='drawer-head'><span>メニュー</span><button type='button' class='drawer-close' aria-label='閉じる'>✕ 閉じる</button></div><h2>ページ</h2><ul><li><a href='kazokuyo.html'>🌱 ダッシュボード</a></li><li><a href='gantt.html' aria-current='page'>🗓 作付けガント</a></li><li><a href='notes.html'>📖 手順と判断</a></li><li><a href='items.html'>📇 品目別</a></li><li><a href='report.html'>🌿 現況報告</a></li></ul><h3>その他</h3><ul><li><a href='kiwi.html'>🥝 キウイ棚</a></li><li><a href='kazokuyo.html#sec-llm-guide'>🤖 AI 再現ガイド</a></li><li><a href='https://uminomae.github.io/hatake-note/' target='_blank' rel='noopener noreferrer'>📊 進め方の点検（PM向け） ↗</a></li></ul><h2>このページ</h2><ul class='dsec'><li><a href='#sec-gantt'>🗓 作付けガント</a></li></ul></div></div><main><details class='acc sec' id='sec-gantt' open><summary>🗓 作付けガント</summary><div class='acc-body'><details class='acc l2' open><summary>絵の読み方</summary><div class='acc-body'><p>いつ何を育てているかを、横に並べた1年で表した絵。帯1本が作物1つぶんの予定。</p>
+<div class="tw"><table class="tbl f1 f2" style="min-width:560px">
+<thead>
+<tr>
+<th>見え方</th>
+<th>意味</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>薄い帯</td>
+<td>苗を育てている期間（畑はまだ使っていない）</td>
+</tr>
+<tr>
+<td>濃い帯</td>
+<td>畑を使っている期間</td>
+</tr>
+<tr>
+<td>白い縞</td>
+<td>穫れる期間</td>
+</tr>
+<tr>
+<td>点線</td>
+<td>穫ったあと、保存して食べられる期間</td>
+</tr>
+<tr>
+<td>赤い縦線</td>
+<td>今週</td>
+</tr>
+<tr>
+<td>1本の帯に白い縞が2つ</td>
+<td>1回植えて2回穫るもの（ワケギの秋と春など）</td>
+</tr>
+<tr>
+<td>端まで続く帯＋毎年の縞</td>
+<td>植え替えないもの（山菜・多年生・自生）</td>
+</tr>
+<tr>
+<td>上下2段＋斜めの線</td>
+<td>何回かに分けて播く作物（下記）</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>白い縞が2つある帯は、植え直していない。</strong> 一度植えた株がそのまま畑に残り、
+穫れる時期だけが2回来る（ワケギは秋に穫ったあと冬は育つのを止め、春にまた穫れる）。
+帯が長いのは「畑を長く使っている」という意味で、その間ずっと穫れるわけではない。</p>
+<p><strong>山菜や多年生（フキ・ウド・アスパラガス・ニラ・ミョウガ・シイタケなど）は、帯が端まで
+続いて白い縞が毎年おなじ時期に出る。</strong> 一度根づいたらそこに居続け、毎年おなじ季節に
+穫れるものだから。これらは畑の畝ではなく、斜面・前庭・法面にいる。</p>
+<p><strong>「ずらしまき ○回」と書いてある行は、上下2段になる。</strong> 上の細い帯が<strong>播く時期</strong>、下の帯が
+<strong>穫れる時期</strong>で、上の縦棒1本が1回ぶんの播種。<strong>斜めの線は「早く播けば早く穫れる／遅く播けば
+遅く穫れる」という対応</strong>を表す＝<strong>種袋の裏にある表と同じ見方</strong>。</p>
+<p>斜めの線は2本とも、<strong>その日に播いたときいちばん早く穫れるのはいつか</strong>を指している
+（穫り終わりではない）。だから2本の傾きが、そのまま<strong>播いてから穫れるまでの長さ</strong>になる。</p>
+<p>一度にたくさん播くと同じ週にどっと穫れて食べきれないので、<strong>わざと何回かに分けて播いて、
+穫れる時期を横に広げている</strong>。斜めの線の傾きが、その広げ方そのもの。</p></div></details><details class='acc l2' open><summary>品目ビュー（何を、いつ）</summary><div class='acc-body'><p>「⚠️品種未定」と書いてある行は、まだ品種を選んでいない。品種によって穫れる時期が
+前後するので、選ぶとこの帯の位置も動く。名前の右の小さな札は、植える場所。
+枠が実線なら場所が決まっていて、破線ならまだ候補。</p>
+<div class="figure"><svg viewBox="0 0 924 1854" width="924" style="min-width:924px" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif">
+<defs><pattern id="hatch" width="5" height="12" patternUnits="userSpaceOnUse"><rect width="5" height="12" fill="none"/><line x1="0" y1="0" x2="0" y2="12" stroke="#fff" stroke-width="2" opacity="0.65"/></pattern></defs>
+<rect width="924" height="1854" fill="#fdfdfb"/>
+<g font-size="10" fill="#444">
+<path d="M8 8 l4 0 l-2 4 z" fill="#5b7a4a" opacity="0.75"/>
+<rect x="8" y="13" width="26" height="6" rx="1" fill="#5b7a4a" opacity="0.14" stroke="#5b7a4a" stroke-width="0.8" stroke-opacity="0.45" stroke-dasharray="3,2"/>
+<text x="38" y="19">▲播種→苗を育てている（畑は空き）</text>
+<rect x="218" y="10" width="26" height="11" rx="2" fill="#5b7a4a" opacity="0.6"/>
+<text x="248" y="19">畑を使っている</text>
+<rect x="348" y="10" width="26" height="11" rx="2" fill="#5b7a4a" opacity="0.6"/>
+<rect x="348" y="10" width="26" height="11" rx="2" fill="url(#hatch)"/>
+<text x="378" y="19">穫れる</text>
+<line x1="438" y1="16" x2="464" y2="16" stroke="#5b7a4a" stroke-width="3" stroke-dasharray="2,4"/>
+<text x="468" y="19">保存して食べられる</text>
+<line x1="600" y1="8" x2="600" y2="21" stroke="#c0392b" stroke-width="2"/>
+<text x="608" y="19">今週</text>
+<text x="12" y="32" fill="#777">帯の色は科（アブラナ・ナス…）。同じ色が続くと連作になる</text>
+</g>
+<g transform="translate(0,36)">
+<line x1="240" y1="20" x2="240" y2="1810" stroke="#bbb" stroke-width="1"/>
+<text x="242" y="16" font-size="10" fill="#666">7月</text>
+<line x1="266" y1="20" x2="266" y2="1810" stroke="#bbb" stroke-width="1"/>
+<text x="268" y="16" font-size="10" fill="#666">8月</text>
+<line x1="292" y1="30" x2="292" y2="1810" stroke="#eee" stroke-width="1"/>
+<line x1="318" y1="30" x2="318" y2="1810" stroke="#eee" stroke-width="1"/>
+<line x1="331" y1="20" x2="331" y2="1810" stroke="#bbb" stroke-width="1"/>
+<text x="333" y="16" font-size="10" fill="#666">9月</text>
+<line x1="344" y1="30" x2="344" y2="1810" stroke="#eee" stroke-width="1"/>
+<line x1="370" y1="30" x2="370" y2="1810" stroke="#eee" stroke-width="1"/>
+<line x1="383" y1="20" x2="383" y2="1810" stroke="#bbb" stroke-width="1"/>
+<text x="385" y="16" font-size="10" fill="#666">10月</text>
+<line x1="396" y1="30" x2="396" y2="1810" stroke="#eee" stroke-width="1"/>
+<line x1="422" y1="30" x2="422" y2="1810" stroke="#eee" stroke-width="1"/>
+<line x1="435" y1="20" x2="435" y2="1810" stroke="#bbb" stroke-width="1"/>
+<text x="437" y="16" font-size="10" fill="#666">11月</text>
+<line x1="448" y1="30" x2="448" y2="1810" stroke="#eee" stroke-width="1"/>
+<line x1="474" y1="30" x2="474" y2="1810" stroke="#eee" stroke-width="1"/>
+<line x1="500" y1="20" x2="500" y2="1810" stroke="#bbb" stroke-width="1"/>
+<text x="502" y="16" font-size="10" fill="#666">12月</text>
+<line x1="526" y1="30" x2="526" y2="1810" stroke="#eee" stroke-width="1"/>
+<line x1="539" y1="20" x2="539" y2="1810" stroke="#bbb" stroke-width="1"/>
+<text x="541" y="16" font-size="10" fill="#666">2027年1月</text>
+<line x1="552" y1="30" x2="552" y2="1810" stroke="#eee" stroke-width="1"/>
+<line x1="578" y1="30" x2="578" y2="1810" stroke="#eee" stroke-width="1"/>
+<line x1="591" y1="20" x2="591" y2="1810" stroke="#bbb" stroke-width="1"/>
+<text x="593" y="16" font-size="10" fill="#666">2月</text>
+<line x1="604" y1="30" x2="604" y2="1810" stroke="#eee" stroke-width="1"/>
+<line x1="630" y1="30" x2="630" y2="1810" stroke="#eee" stroke-width="1"/>
+<line x1="643" y1="20" x2="643" y2="1810" stroke="#bbb" stroke-width="1"/>
+<text x="645" y="16" font-size="10" fill="#666">3月</text>
+<line x1="656" y1="30" x2="656" y2="1810" stroke="#eee" stroke-width="1"/>
+<line x1="682" y1="30" x2="682" y2="1810" stroke="#eee" stroke-width="1"/>
+<line x1="708" y1="20" x2="708" y2="1810" stroke="#bbb" stroke-width="1"/>
+<text x="710" y="16" font-size="10" fill="#666">4月</text>
+<line x1="734" y1="30" x2="734" y2="1810" stroke="#eee" stroke-width="1"/>
+<line x1="760" y1="20" x2="760" y2="1810" stroke="#bbb" stroke-width="1"/>
+<text x="762" y="16" font-size="10" fill="#666">5月</text>
+<line x1="786" y1="30" x2="786" y2="1810" stroke="#eee" stroke-width="1"/>
+<line x1="812" y1="30" x2="812" y2="1810" stroke="#eee" stroke-width="1"/>
+<line x1="825" y1="20" x2="825" y2="1810" stroke="#bbb" stroke-width="1"/>
+<text x="827" y="16" font-size="10" fill="#666">6月</text>
+<line x1="838" y1="30" x2="838" y2="1810" stroke="#eee" stroke-width="1"/>
+<line x1="864" y1="30" x2="864" y2="1810" stroke="#eee" stroke-width="1"/>
+<line x1="877" y1="20" x2="877" y2="1810" stroke="#bbb" stroke-width="1"/>
+<text x="879" y="16" font-size="10" fill="#666">7月</text>
+<line x1="890" y1="30" x2="890" y2="1810" stroke="#eee" stroke-width="1"/>
+<line x1="916" y1="30" x2="916" y2="1810" stroke="#eee" stroke-width="1"/>
+<line x1="298" y1="20" x2="298" y2="1810" stroke="#d33" stroke-width="2"/>
+<text x="301" y="16" font-size="10" fill="#d33">今週</text>
+<text x="4" y="46" font-size="11" fill="#222">アスパラガス</text>
+<text x="4" y="57" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="180" y="40" width="51" height="13" rx="3" fill="none" stroke="#888" stroke-width="1" stroke-dasharray="3,2"/>
+<text x="183" y="50" font-size="9" fill="#555">斜面（東）</text>
+<rect x="240" y="40" width="676" height="12" rx="2" fill="#777777" opacity="0.6"/>
+<rect x="747" y="40" width="117" height="12" rx="2" fill="url(#hatch)"/>
+<text x="4" y="72" font-size="11" fill="#222">ウコギ</text>
+<text x="4" y="83" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="180" y="66" width="51" height="13" rx="3" fill="none" stroke="#888" stroke-width="1" stroke-dasharray="3,2"/>
+<text x="183" y="76" font-size="9" fill="#555">斜面（東）</text>
+<rect x="240" y="66" width="676" height="12" rx="2" fill="#777777" opacity="0.6"/>
+<rect x="747" y="66" width="117" height="12" rx="2" fill="url(#hatch)"/>
+<text x="4" y="98" font-size="11" fill="#222">ウド</text>
+<text x="4" y="109" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="180" y="92" width="51" height="13" rx="3" fill="none" stroke="#888" stroke-width="1" stroke-dasharray="3,2"/>
+<text x="183" y="102" font-size="9" fill="#555">斜面（東）</text>
+<rect x="240" y="92" width="676" height="12" rx="2" fill="#777777" opacity="0.6"/>
+<rect x="747" y="92" width="65" height="12" rx="2" fill="url(#hatch)"/>
+<text x="4" y="124" font-size="11" fill="#222">ウルイ</text>
+<text x="4" y="135" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="171" y="118" width="60" height="13" rx="3" fill="none" stroke="#888" stroke-width="1" stroke-dasharray="3,2"/>
+<text x="174" y="128" font-size="9" fill="#555">法面（西南）</text>
+<rect x="240" y="118" width="676" height="12" rx="2" fill="#777777" opacity="0.6"/>
+<rect x="734" y="118" width="78" height="12" rx="2" fill="url(#hatch)"/>
+<text x="4" y="150" font-size="11" fill="#222">コゴミ</text>
+<text x="4" y="161" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="171" y="144" width="60" height="13" rx="3" fill="none" stroke="#888" stroke-width="1" stroke-dasharray="3,2"/>
+<text x="174" y="154" font-size="9" fill="#555">法面（西南）</text>
+<rect x="240" y="144" width="676" height="12" rx="2" fill="#777777" opacity="0.6"/>
+<rect x="721" y="144" width="78" height="12" rx="2" fill="url(#hatch)"/>
+<text x="4" y="176" font-size="11" fill="#222">シイタケ</text>
+<text x="4" y="187" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="180" y="170" width="51" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="183" y="180" font-size="9" fill="#555">斜面（東）</text>
+<rect x="240" y="170" width="676" height="12" rx="2" fill="#777777" opacity="0.6"/>
+<rect x="370" y="170" width="78" height="12" rx="2" fill="url(#hatch)"/>
+<text x="4" y="202" font-size="11" fill="#222">タラの芽</text>
+<text x="4" y="213" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="180" y="196" width="51" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="183" y="206" font-size="9" fill="#555">斜面（東）</text>
+<rect x="240" y="196" width="676" height="12" rx="2" fill="#777777" opacity="0.6"/>
+<rect x="708" y="196" width="104" height="12" rx="2" fill="url(#hatch)"/>
+<text x="4" y="228" font-size="11" fill="#222">ニラ</text>
+<text x="4" y="239" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="180" y="222" width="51" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="183" y="232" font-size="9" fill="#555">斜面（東）</text>
+<rect x="240" y="222" width="676" height="12" rx="2" fill="#7a5aa0" opacity="0.6"/>
+<rect x="240" y="222" width="130" height="12" rx="2" fill="url(#hatch)"/>
+<rect x="734" y="222" width="182" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="370" y1="228" x2="383" y2="228" stroke="#7a5aa0" stroke-width="3" stroke-dasharray="2,4"/>
+<text x="4" y="254" font-size="11" fill="#222">フキ</text>
+<text x="4" y="265" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="207" y="248" width="24" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="210" y="258" font-size="9" fill="#555">前庭</text>
+<rect x="240" y="248" width="676" height="12" rx="2" fill="#b0662f" opacity="0.6"/>
+<rect x="708" y="248" width="156" height="12" rx="2" fill="url(#hatch)"/>
+<text x="4" y="280" font-size="11" fill="#222">フキノトウ</text>
+<text x="4" y="291" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="207" y="274" width="24" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="210" y="284" font-size="9" fill="#555">前庭</text>
+<rect x="240" y="274" width="676" height="12" rx="2" fill="#b0662f" opacity="0.6"/>
+<rect x="643" y="274" width="104" height="12" rx="2" fill="url(#hatch)"/>
+<text x="4" y="306" font-size="11" fill="#222">ミョウガ</text>
+<text x="4" y="317" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="180" y="300" width="51" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="183" y="310" font-size="9" fill="#555">斜面（東）</text>
+<rect x="240" y="300" width="676" height="12" rx="2" fill="#777777" opacity="0.6"/>
+<rect x="240" y="300" width="156" height="12" rx="2" fill="url(#hatch)"/>
+<rect x="890" y="300" width="26" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="396" y1="306" x2="409" y2="306" stroke="#777777" stroke-width="3" stroke-dasharray="2,4"/>
+<text x="4" y="332" font-size="11" fill="#222">ヨモギ</text>
+<text x="4" y="343" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="207" y="326" width="24" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="210" y="336" font-size="9" fill="#555">前庭</text>
+<rect x="240" y="326" width="676" height="12" rx="2" fill="#b0662f" opacity="0.6"/>
+<rect x="643" y="326" width="169" height="12" rx="2" fill="url(#hatch)"/>
+<text x="4" y="358" font-size="11" fill="#222">ルバーブ</text>
+<text x="4" y="369" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="180" y="352" width="51" height="13" rx="3" fill="none" stroke="#888" stroke-width="1" stroke-dasharray="3,2"/>
+<text x="183" y="362" font-size="9" fill="#555">斜面（東）</text>
+<rect x="240" y="352" width="676" height="12" rx="2" fill="#777777" opacity="0.6"/>
+<rect x="773" y="352" width="91" height="12" rx="2" fill="url(#hatch)"/>
+<text x="4" y="384" font-size="11" fill="#222">小ネギ</text>
+<text x="4" y="395" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="180" y="378" width="51" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="183" y="388" font-size="9" fill="#555">斜面（東）</text>
+<rect x="240" y="378" width="676" height="12" rx="2" fill="#7a5aa0" opacity="0.6"/>
+<rect x="240" y="378" width="221" height="12" rx="2" fill="url(#hatch)"/>
+<rect x="760" y="378" width="156" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="461" y1="384" x2="474" y2="384" stroke="#7a5aa0" stroke-width="3" stroke-dasharray="2,4"/>
+<text x="4" y="410" font-size="11" fill="#222">下仁田ネギ</text>
+<text x="4" y="421" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="198" y="404" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="201" y="414" font-size="9" fill="#555">北東1</text>
+<rect x="240" y="404" width="377" height="12" rx="2" fill="#7a5aa0" opacity="0.6"/>
+<rect x="487" y="404" width="130" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="617" y1="410" x2="630" y2="410" stroke="#7a5aa0" stroke-width="3" stroke-dasharray="2,4"/>
+<text x="4" y="436" font-size="11" fill="#222">ピーマン</text>
+<text x="4" y="447" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="198" y="430" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="201" y="440" font-size="9" fill="#555">南東2</text>
+<rect x="240" y="430" width="156" height="12" rx="2" fill="#8c4a6b" opacity="0.6"/>
+<rect x="253" y="430" width="143" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="396" y1="436" x2="409" y2="436" stroke="#8c4a6b" stroke-width="3" stroke-dasharray="2,4"/>
+<text x="4" y="462" font-size="11" fill="#222">ミニトマト</text>
+<text x="4" y="473" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="198" y="456" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="201" y="466" font-size="9" fill="#555">南東2</text>
+<rect x="240" y="456" width="156" height="12" rx="2" fill="#8c4a6b" opacity="0.6"/>
+<rect x="253" y="456" width="143" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="396" y1="462" x2="409" y2="462" stroke="#8c4a6b" stroke-width="3" stroke-dasharray="2,4"/>
+<text x="4" y="488" font-size="11" fill="#222">パプリカ</text>
+<text x="4" y="499" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="198" y="482" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="201" y="492" font-size="9" fill="#555">南東2</text>
+<rect x="240" y="482" width="156" height="12" rx="2" fill="#8c4a6b" opacity="0.6"/>
+<rect x="292" y="482" width="104" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="396" y1="488" x2="409" y2="488" stroke="#8c4a6b" stroke-width="3" stroke-dasharray="2,4"/>
+<text x="4" y="514" font-size="11" fill="#222">キュウリ</text>
+<text x="4" y="525" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="198" y="508" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="201" y="518" font-size="9" fill="#555">南東1</text>
+<rect x="240" y="508" width="104" height="12" rx="2" fill="#3f9160" opacity="0.6"/>
+<rect x="240" y="508" width="104" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="344" y1="514" x2="357" y2="514" stroke="#3f9160" stroke-width="3" stroke-dasharray="2,4"/>
+<text x="4" y="540" font-size="11" fill="#222">アオジソ</text>
+<text x="4" y="551" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="180" y="534" width="51" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="183" y="544" font-size="9" fill="#555">斜面（東）</text>
+<rect x="240" y="534" width="169" height="12" rx="2" fill="#777777" opacity="0.6"/>
+<rect x="240" y="534" width="169" height="12" rx="2" fill="url(#hatch)"/>
+<text x="4" y="566" font-size="11" fill="#222">ナガイモ</text>
+<text x="4" y="577" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="180" y="560" width="51" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="183" y="570" font-size="9" fill="#555">斜面（東）</text>
+<rect x="240" y="560" width="234" height="12" rx="2" fill="#8a7340" opacity="0.6"/>
+<rect x="435" y="560" width="39" height="12" rx="2" fill="url(#hatch)"/>
+<text x="4" y="592" font-size="11" fill="#222">オクラ</text>
+<text x="4" y="603" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="198" y="586" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="201" y="596" font-size="9" fill="#555">北東1</text>
+<rect x="240" y="586" width="156" height="12" rx="2" fill="#3e8c7d" opacity="0.6"/>
+<rect x="253" y="586" width="143" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="396" y1="592" x2="409" y2="592" stroke="#3e8c7d" stroke-width="3" stroke-dasharray="2,4"/>
+<text x="4" y="618" font-size="11" fill="#222">サトイモ</text>
+<text x="4" y="629" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="198" y="612" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="201" y="622" font-size="9" fill="#555">南東4</text>
+<rect x="240" y="612" width="234" height="12" rx="2" fill="#5a6ea0" opacity="0.6"/>
+<rect x="383" y="612" width="91" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="474" y1="618" x2="526" y2="618" stroke="#5a6ea0" stroke-width="3" stroke-dasharray="2,4"/>
+<text x="4" y="644" font-size="11" fill="#222">イタリアンパセリ</text>
+<text x="4" y="655" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="198" y="638" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="201" y="648" font-size="9" fill="#555">中庭3</text>
+<rect x="240" y="641" width="65" height="6" rx="1" fill="#c2802f" opacity="0.14" stroke="#c2802f" stroke-width="0.8" stroke-opacity="0.45" stroke-dasharray="3,2"/>
+<rect x="305" y="638" width="611" height="12" rx="2" fill="#c2802f" opacity="0.6"/>
+<rect x="864" y="638" width="52" height="12" rx="2" fill="url(#hatch)"/>
+<text x="4" y="670" font-size="11" fill="#222">キュウリ（秋どり）</text>
+<text x="4" y="681" font-size="9" fill="#777">よしなり</text>
+<rect x="198" y="664" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="201" y="674" font-size="9" fill="#555">南東8</text>
+<rect x="240" y="667" width="13" height="6" rx="1" fill="#3f9160" opacity="0.14" stroke="#3f9160" stroke-width="0.8" stroke-opacity="0.45" stroke-dasharray="3,2"/>
+<rect x="253" y="664" width="143" height="12" rx="2" fill="#3f9160" opacity="0.6"/>
+<rect x="318" y="664" width="78" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="396" y1="670" x2="409" y2="670" stroke="#3f9160" stroke-width="3" stroke-dasharray="2,4"/>
+<text x="4" y="696" font-size="11" fill="#222">ハツカダイコン</text>
+<text x="4" y="707" font-size="9" fill="#777">紅白はつか大根</text>
+<rect x="198" y="690" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="201" y="700" font-size="9" fill="#555">南東4</text>
+<rect x="162" y="690" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="165" y="700" font-size="9" fill="#555">南東5</text>
+<text x="4" y="718" font-size="9" fill="#777">ずらしまき 2回</text>
+<rect x="240" y="688" width="104" height="7" rx="2" fill="#5b8c3e" opacity="0.30"/>
+<rect x="266" y="710" width="169" height="11" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="266" y="710" width="169" height="11" rx="2" fill="url(#hatch)"/>
+<line x1="344" y1="688" x2="344" y2="695" stroke="#5b8c3e" stroke-width="1.6" stroke-opacity="0.9"/>
+<line x1="344" y1="695" x2="396" y2="710" stroke="#5b8c3e" stroke-width="1" stroke-dasharray="3,2" stroke-opacity="0.65"/>
+<text x="4" y="740" font-size="11" fill="#222">レタス</text>
+<text x="4" y="751" font-size="9" fill="#777">グレートレーク（結球）</text>
+<rect x="198" y="734" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="201" y="744" font-size="9" fill="#555">中庭3</text>
+<rect x="162" y="734" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="165" y="744" font-size="9" fill="#555">南東8</text>
+<rect x="240" y="737" width="26" height="6" rx="1" fill="#b0662f" opacity="0.14" stroke="#b0662f" stroke-width="0.8" stroke-opacity="0.45" stroke-dasharray="3,2"/>
+<rect x="266" y="734" width="195" height="12" rx="2" fill="#b0662f" opacity="0.6"/>
+<rect x="370" y="734" width="91" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="461" y1="740" x2="474" y2="740" stroke="#b0662f" stroke-width="3" stroke-dasharray="2,4"/>
+<rect x="240" y="737" width="39" height="6" rx="1" fill="#b0662f" opacity="0.14" stroke="#b0662f" stroke-width="0.8" stroke-opacity="0.45" stroke-dasharray="3,2"/>
+<rect x="279" y="734" width="182" height="12" rx="2" fill="#b0662f" opacity="0.6"/>
+<rect x="370" y="734" width="91" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="461" y1="740" x2="474" y2="740" stroke="#b0662f" stroke-width="3" stroke-dasharray="2,4"/>
+<text x="4" y="766" font-size="11" fill="#222">ブロッコリー</text>
+<text x="4" y="777" font-size="9" fill="#777">緑嶺</text>
+<rect x="189" y="760" width="42" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="192" y="770" font-size="9" fill="#555">南東11</text>
+<rect x="240" y="763" width="52" height="6" rx="1" fill="#5b8c3e" opacity="0.14" stroke="#5b8c3e" stroke-width="0.8" stroke-opacity="0.45" stroke-dasharray="3,2"/>
+<rect x="292" y="760" width="234" height="12" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="422" y="760" width="104" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="526" y1="766" x2="552" y2="766" stroke="#5b8c3e" stroke-width="3" stroke-dasharray="2,4"/>
+<text x="4" y="792" font-size="11" fill="#222">インゲン</text>
+<text x="4" y="803" font-size="9" fill="#777">秋どりいんげん〔つるあり〕</text>
+<rect x="198" y="786" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="201" y="796" font-size="9" fill="#555">南東8</text>
+<rect x="240" y="789" width="13" height="6" rx="1" fill="#6b6b2f" opacity="0.14" stroke="#6b6b2f" stroke-width="0.8" stroke-opacity="0.45" stroke-dasharray="3,2"/>
+<path d="M240 784 l4 0 l-2 4 z" fill="#6b6b2f" opacity="0.75"/>
+<rect x="253" y="786" width="143" height="12" rx="2" fill="#6b6b2f" opacity="0.6"/>
+<rect x="318" y="786" width="78" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="396" y1="792" x2="409" y2="792" stroke="#6b6b2f" stroke-width="3" stroke-dasharray="2,4"/>
+<text x="4" y="818" font-size="11" fill="#222">ニンジン</text>
+<text x="4" y="829" font-size="9" fill="#777">黒田五寸 陽彩</text>
+<rect x="207" y="812" width="24" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="210" y="822" font-size="9" fill="#555">西1</text>
+<rect x="240" y="812" width="260" height="12" rx="2" fill="#c2802f" opacity="0.6"/>
+<rect x="422" y="812" width="78" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="500" y1="818" x2="708" y2="818" stroke="#c2802f" stroke-width="3" stroke-dasharray="2,4"/>
+<text x="4" y="844" font-size="11" fill="#222">カブ</text>
+<text x="4" y="855" font-size="9" fill="#777">時なし小かぶ</text>
+<rect x="207" y="838" width="24" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="210" y="848" font-size="9" fill="#555">西2</text>
+<rect x="253" y="838" width="130" height="12" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="318" y="838" width="65" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="383" y1="844" x2="409" y2="844" stroke="#5b8c3e" stroke-width="3" stroke-dasharray="2,4"/>
+<text x="4" y="870" font-size="11" fill="#222">コマツナ</text>
+<text x="4" y="881" font-size="9" fill="#777">照楽</text>
+<rect x="198" y="864" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="201" y="874" font-size="9" fill="#555">南東5</text>
+<rect x="171" y="864" width="24" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="174" y="874" font-size="9" fill="#555">西2</text>
+<rect x="144" y="864" width="24" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="147" y="874" font-size="9" fill="#555">西2</text>
+<text x="4" y="892" font-size="9" fill="#777">ずらしまき 3回</text>
+<rect x="253" y="862" width="26" height="7" rx="2" fill="#5b8c3e" opacity="0.30"/>
+<rect x="318" y="884" width="143" height="11" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="318" y="884" width="143" height="11" rx="2" fill="url(#hatch)"/>
+<line x1="253" y1="862" x2="253" y2="869" stroke="#5b8c3e" stroke-width="1.6" stroke-opacity="0.9"/>
+<line x1="266" y1="862" x2="266" y2="869" stroke="#5b8c3e" stroke-width="1.6" stroke-opacity="0.9"/>
+<line x1="279" y1="862" x2="279" y2="869" stroke="#5b8c3e" stroke-width="1.6" stroke-opacity="0.9"/>
+<line x1="253" y1="869" x2="318" y2="884" stroke="#5b8c3e" stroke-width="1" stroke-dasharray="3,2" stroke-opacity="0.65"/>
+<line x1="279" y1="869" x2="331" y2="884" stroke="#5b8c3e" stroke-width="1" stroke-dasharray="3,2" stroke-opacity="0.65"/>
+<text x="4" y="914" font-size="11" fill="#222">インゲン</text>
+<text x="4" y="925" font-size="9" fill="#777">さつきみどり他</text>
+<rect x="198" y="908" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="201" y="918" font-size="9" fill="#555">北東2</text>
+<rect x="266" y="908" width="130" height="12" rx="2" fill="#6b6b2f" opacity="0.6"/>
+<rect x="318" y="908" width="78" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="396" y1="914" x2="409" y2="914" stroke="#6b6b2f" stroke-width="3" stroke-dasharray="2,4"/>
+<text x="4" y="940" font-size="11" fill="#222">インゲン</text>
+<text x="4" y="951" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="207" y="934" width="24" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="210" y="944" font-size="9" fill="#555">西1</text>
+<rect x="266" y="934" width="130" height="12" rx="2" fill="#6b6b2f" opacity="0.6"/>
+<rect x="318" y="934" width="78" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="396" y1="940" x2="409" y2="940" stroke="#6b6b2f" stroke-width="3" stroke-dasharray="2,4"/>
+<text x="4" y="966" font-size="11" fill="#222">スイスチャード</text>
+<text x="4" y="977" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="198" y="960" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="201" y="970" font-size="9" fill="#555">中庭3</text>
+<rect x="162" y="960" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="165" y="970" font-size="9" fill="#555">南東5</text>
+<rect x="135" y="960" width="24" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="138" y="970" font-size="9" fill="#555">西2</text>
+<text x="4" y="988" font-size="9" fill="#777">ずらしまき 3回</text>
+<rect x="266" y="958" width="13" height="7" rx="2" fill="#3e7a8c" opacity="0.30"/>
+<rect x="318" y="980" width="130" height="11" rx="2" fill="#3e7a8c" opacity="0.6"/>
+<rect x="318" y="980" width="130" height="11" rx="2" fill="url(#hatch)"/>
+<line x1="266" y1="958" x2="266" y2="965" stroke="#3e7a8c" stroke-width="1.6" stroke-opacity="0.9"/>
+<line x1="266" y1="958" x2="266" y2="965" stroke="#3e7a8c" stroke-width="1.6" stroke-opacity="0.9"/>
+<line x1="279" y1="958" x2="279" y2="965" stroke="#3e7a8c" stroke-width="1.6" stroke-opacity="0.9"/>
+<line x1="266" y1="965" x2="318" y2="980" stroke="#3e7a8c" stroke-width="1" stroke-dasharray="3,2" stroke-opacity="0.65"/>
+<line x1="279" y1="965" x2="318" y2="980" stroke="#3e7a8c" stroke-width="1" stroke-dasharray="3,2" stroke-opacity="0.65"/>
+<text x="4" y="1010" font-size="11" fill="#222">ダイコン</text>
+<text x="4" y="1021" font-size="9" fill="#777">里の宮</text>
+<rect x="198" y="1004" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="201" y="1014" font-size="9" fill="#555">中庭2</text>
+<rect x="171" y="1004" width="24" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="174" y="1014" font-size="9" fill="#555">西3</text>
+<rect x="144" y="1004" width="24" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="147" y="1014" font-size="9" fill="#555">西4</text>
+<rect x="266" y="1004" width="208" height="12" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="370" y="1004" width="104" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="474" y1="1010" x2="708" y2="1010" stroke="#5b8c3e" stroke-width="3" stroke-dasharray="2,4"/>
+<rect x="266" y="1004" width="208" height="12" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="370" y="1004" width="104" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="474" y1="1010" x2="708" y2="1010" stroke="#5b8c3e" stroke-width="3" stroke-dasharray="2,4"/>
+<rect x="266" y="1004" width="208" height="12" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="370" y="1004" width="104" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="474" y1="1010" x2="708" y2="1010" stroke="#5b8c3e" stroke-width="3" stroke-dasharray="2,4"/>
+<text x="4" y="1036" font-size="11" fill="#222">ハクサイ（生食）</text>
+<text x="4" y="1047" font-size="9" fill="#777">CRお黄にいり</text>
+<rect x="207" y="1030" width="24" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="210" y="1040" font-size="9" fill="#555">西5</text>
+<rect x="266" y="1033" width="26" height="6" rx="1" fill="#5b8c3e" opacity="0.14" stroke="#5b8c3e" stroke-width="0.8" stroke-opacity="0.45" stroke-dasharray="3,2"/>
+<path d="M266 1028 l4 0 l-2 4 z" fill="#5b8c3e" opacity="0.75"/>
+<rect x="292" y="1030" width="156" height="12" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="383" y="1030" width="65" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="448" y1="1036" x2="604" y2="1036" stroke="#5b8c3e" stroke-width="3" stroke-dasharray="2,4"/>
+<text x="4" y="1062" font-size="11" fill="#222">ベビーリーフ</text>
+<text x="4" y="1073" font-size="9" fill="#777">彩りベビーリーフ</text>
+<text x="218" y="1066" font-size="9" fill="#555">+1</text>
+<rect x="178" y="1056" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="181" y="1066" font-size="9" fill="#555">中庭3</text>
+<rect x="142" y="1056" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="145" y="1066" font-size="9" fill="#555">北東1</text>
+<rect x="106" y="1056" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="109" y="1066" font-size="9" fill="#555">南東1</text>
+<text x="4" y="1084" font-size="9" fill="#777">ずらしまき 4回</text>
+<rect x="266" y="1054" width="117" height="7" rx="2" fill="#5b8c3e" opacity="0.30"/>
+<rect x="318" y="1076" width="156" height="11" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="318" y="1076" width="156" height="11" rx="2" fill="url(#hatch)"/>
+<line x1="266" y1="1054" x2="266" y2="1061" stroke="#5b8c3e" stroke-width="1.6" stroke-opacity="0.9"/>
+<line x1="266" y1="1054" x2="266" y2="1061" stroke="#5b8c3e" stroke-width="1.6" stroke-opacity="0.9"/>
+<line x1="266" y1="1054" x2="266" y2="1061" stroke="#5b8c3e" stroke-width="1.6" stroke-opacity="0.9"/>
+<line x1="383" y1="1054" x2="383" y2="1061" stroke="#5b8c3e" stroke-width="1.6" stroke-opacity="0.9"/>
+<line x1="266" y1="1061" x2="318" y2="1076" stroke="#5b8c3e" stroke-width="1" stroke-dasharray="3,2" stroke-opacity="0.65"/>
+<line x1="383" y1="1061" x2="435" y2="1076" stroke="#5b8c3e" stroke-width="1" stroke-dasharray="3,2" stroke-opacity="0.65"/>
+<text x="4" y="1106" font-size="11" fill="#222">ミズナ</text>
+<text x="4" y="1117" font-size="9" fill="#777">千筋京菜</text>
+<rect x="198" y="1100" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="201" y="1110" font-size="9" fill="#555">中庭3</text>
+<rect x="162" y="1100" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="165" y="1110" font-size="9" fill="#555">中庭3</text>
+<rect x="135" y="1100" width="24" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="138" y="1110" font-size="9" fill="#555">西2</text>
+<text x="4" y="1128" font-size="9" fill="#777">ずらしまき 3回</text>
+<rect x="266" y="1098" width="52" height="7" rx="2" fill="#5b8c3e" opacity="0.30"/>
+<rect x="370" y="1120" width="143" height="11" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="370" y="1120" width="143" height="11" rx="2" fill="url(#hatch)"/>
+<line x1="266" y1="1098" x2="266" y2="1105" stroke="#5b8c3e" stroke-width="1.6" stroke-opacity="0.9"/>
+<line x1="266" y1="1098" x2="266" y2="1105" stroke="#5b8c3e" stroke-width="1.6" stroke-opacity="0.9"/>
+<line x1="318" y1="1098" x2="318" y2="1105" stroke="#5b8c3e" stroke-width="1.6" stroke-opacity="0.9"/>
+<line x1="266" y1="1105" x2="370" y2="1120" stroke="#5b8c3e" stroke-width="1" stroke-dasharray="3,2" stroke-opacity="0.65"/>
+<line x1="318" y1="1105" x2="370" y2="1120" stroke="#5b8c3e" stroke-width="1" stroke-dasharray="3,2" stroke-opacity="0.65"/>
+<text x="4" y="1150" font-size="11" fill="#222">リーフレタス</text>
+<text x="4" y="1161" font-size="9" fill="#c33">⚠️品種未定</text>
+<text x="218" y="1154" font-size="9" fill="#555">+2</text>
+<rect x="178" y="1144" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="181" y="1154" font-size="9" fill="#555">南東1</text>
+<rect x="133" y="1144" width="42" height="13" rx="3" fill="none" stroke="#888" stroke-width="1" stroke-dasharray="3,2"/>
+<text x="136" y="1154" font-size="9" fill="#555">南東11</text>
+<rect x="106" y="1144" width="24" height="13" rx="3" fill="none" stroke="#888" stroke-width="1" stroke-dasharray="3,2"/>
+<text x="109" y="1154" font-size="9" fill="#555">西3</text>
+<rect x="266" y="1147" width="52" height="6" rx="1" fill="#b0662f" opacity="0.14" stroke="#b0662f" stroke-width="0.8" stroke-opacity="0.45" stroke-dasharray="3,2"/>
+<path d="M266 1142 l4 0 l-2 4 z" fill="#b0662f" opacity="0.75"/>
+<rect x="318" y="1144" width="143" height="12" rx="2" fill="#b0662f" opacity="0.6"/>
+<rect x="370" y="1144" width="91" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="461" y1="1150" x2="474" y2="1150" stroke="#b0662f" stroke-width="3" stroke-dasharray="2,4"/>
+<rect x="266" y="1147" width="52" height="6" rx="1" fill="#b0662f" opacity="0.14" stroke="#b0662f" stroke-width="0.8" stroke-opacity="0.45" stroke-dasharray="3,2"/>
+<path d="M266 1142 l4 0 l-2 4 z" fill="#b0662f" opacity="0.75"/>
+<rect x="318" y="1144" width="143" height="12" rx="2" fill="#b0662f" opacity="0.6"/>
+<rect x="370" y="1144" width="91" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="461" y1="1150" x2="474" y2="1150" stroke="#b0662f" stroke-width="3" stroke-dasharray="2,4"/>
+<rect x="266" y="1147" width="52" height="6" rx="1" fill="#b0662f" opacity="0.14" stroke="#b0662f" stroke-width="0.8" stroke-opacity="0.45" stroke-dasharray="3,2"/>
+<path d="M266 1142 l4 0 l-2 4 z" fill="#b0662f" opacity="0.75"/>
+<rect x="318" y="1144" width="143" height="12" rx="2" fill="#b0662f" opacity="0.6"/>
+<rect x="370" y="1144" width="91" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="461" y1="1150" x2="474" y2="1150" stroke="#b0662f" stroke-width="3" stroke-dasharray="2,4"/>
+<rect x="266" y="1147" width="52" height="6" rx="1" fill="#b0662f" opacity="0.14" stroke="#b0662f" stroke-width="0.8" stroke-opacity="0.45" stroke-dasharray="3,2"/>
+<path d="M266 1142 l4 0 l-2 4 z" fill="#b0662f" opacity="0.75"/>
+<rect x="318" y="1144" width="143" height="12" rx="2" fill="#b0662f" opacity="0.6"/>
+<rect x="370" y="1144" width="91" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="461" y1="1150" x2="474" y2="1150" stroke="#b0662f" stroke-width="3" stroke-dasharray="2,4"/>
+<rect x="266" y="1147" width="52" height="6" rx="1" fill="#b0662f" opacity="0.14" stroke="#b0662f" stroke-width="0.8" stroke-opacity="0.45" stroke-dasharray="3,2"/>
+<path d="M266 1142 l4 0 l-2 4 z" fill="#b0662f" opacity="0.75"/>
+<rect x="318" y="1144" width="143" height="12" rx="2" fill="#b0662f" opacity="0.6"/>
+<rect x="370" y="1144" width="91" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="461" y1="1150" x2="474" y2="1150" stroke="#b0662f" stroke-width="3" stroke-dasharray="2,4"/>
+<text x="4" y="1176" font-size="11" fill="#222">ノラボウナ</text>
+<text x="4" y="1187" font-size="9" fill="#777">清系-9520</text>
+<rect x="207" y="1170" width="24" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="210" y="1180" font-size="9" fill="#555">西3</text>
+<rect x="279" y="1173" width="39" height="6" rx="1" fill="#5b8c3e" opacity="0.14" stroke="#5b8c3e" stroke-width="0.8" stroke-opacity="0.45" stroke-dasharray="3,2"/>
+<path d="M279 1168 l4 0 l-2 4 z" fill="#5b8c3e" opacity="0.75"/>
+<rect x="318" y="1170" width="429" height="12" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="708" y="1170" width="39" height="12" rx="2" fill="url(#hatch)"/>
+<text x="4" y="1202" font-size="11" fill="#222">シュンギク</text>
+<text x="4" y="1213" font-size="9" fill="#777">中葉しゅんぎく</text>
+<rect x="198" y="1196" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="201" y="1206" font-size="9" fill="#555">中庭3</text>
+<rect x="162" y="1196" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="165" y="1206" font-size="9" fill="#555">南東6</text>
+<rect x="126" y="1196" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="129" y="1206" font-size="9" fill="#555">南東6</text>
+<text x="4" y="1224" font-size="9" fill="#777">ずらしまき 3回</text>
+<rect x="292" y="1194" width="26" height="7" rx="2" fill="#b0662f" opacity="0.30"/>
+<rect x="370" y="1216" width="143" height="11" rx="2" fill="#b0662f" opacity="0.6"/>
+<rect x="370" y="1216" width="143" height="11" rx="2" fill="url(#hatch)"/>
+<line x1="292" y1="1194" x2="292" y2="1201" stroke="#b0662f" stroke-width="1.6" stroke-opacity="0.9"/>
+<line x1="318" y1="1194" x2="318" y2="1201" stroke="#b0662f" stroke-width="1.6" stroke-opacity="0.9"/>
+<line x1="318" y1="1194" x2="318" y2="1201" stroke="#b0662f" stroke-width="1.6" stroke-opacity="0.9"/>
+<line x1="292" y1="1201" x2="370" y2="1216" stroke="#b0662f" stroke-width="1" stroke-dasharray="3,2" stroke-opacity="0.65"/>
+<line x1="318" y1="1201" x2="370" y2="1216" stroke="#b0662f" stroke-width="1" stroke-dasharray="3,2" stroke-opacity="0.65"/>
+<text x="4" y="1246" font-size="11" fill="#222">ハクサイ（漬物）</text>
+<text x="4" y="1257" font-size="9" fill="#777">黄皇85</text>
+<rect x="189" y="1240" width="42" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="192" y="1250" font-size="9" fill="#555">南東11</text>
+<rect x="162" y="1240" width="24" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="165" y="1250" font-size="9" fill="#555">西5</text>
+<rect x="292" y="1243" width="26" height="6" rx="1" fill="#5b8c3e" opacity="0.14" stroke="#5b8c3e" stroke-width="0.8" stroke-opacity="0.45" stroke-dasharray="3,2"/>
+<path d="M292 1238 l4 0 l-2 4 z" fill="#5b8c3e" opacity="0.75"/>
+<rect x="318" y="1240" width="208" height="12" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="500" y="1240" width="26" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="526" y1="1246" x2="760" y2="1246" stroke="#5b8c3e" stroke-width="3" stroke-dasharray="2,4"/>
+<rect x="292" y="1243" width="26" height="6" rx="1" fill="#5b8c3e" opacity="0.14" stroke="#5b8c3e" stroke-width="0.8" stroke-opacity="0.45" stroke-dasharray="3,2"/>
+<path d="M292 1238 l4 0 l-2 4 z" fill="#5b8c3e" opacity="0.75"/>
+<rect x="318" y="1240" width="169" height="12" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="422" y="1240" width="65" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="487" y1="1246" x2="721" y2="1246" stroke="#5b8c3e" stroke-width="3" stroke-dasharray="2,4"/>
+<text x="4" y="1272" font-size="11" fill="#222">ラッキョウ</text>
+<text x="4" y="1283" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="180" y="1266" width="51" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="183" y="1276" font-size="9" fill="#555">斜面（東）</text>
+<rect x="305" y="1266" width="572" height="12" rx="2" fill="#7a5aa0" opacity="0.6"/>
+<rect x="838" y="1266" width="39" height="12" rx="2" fill="url(#hatch)"/>
+<rect x="734" y="1266" width="52" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="877" y1="1272" x2="916" y2="1272" stroke="#7a5aa0" stroke-width="3" stroke-dasharray="2,4"/>
+<text x="4" y="1298" font-size="11" fill="#222">ワケギ</text>
+<text x="4" y="1309" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="198" y="1292" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="201" y="1302" font-size="9" fill="#555">中庭1</text>
+<rect x="162" y="1292" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="165" y="1302" font-size="9" fill="#555">南東3</text>
+<rect x="305" y="1292" width="455" height="12" rx="2" fill="#7a5aa0" opacity="0.6"/>
+<rect x="370" y="1292" width="104" height="12" rx="2" fill="url(#hatch)"/>
+<rect x="669" y="1292" width="91" height="12" rx="2" fill="url(#hatch)"/>
+<rect x="305" y="1292" width="455" height="12" rx="2" fill="#7a5aa0" opacity="0.6"/>
+<rect x="370" y="1292" width="104" height="12" rx="2" fill="url(#hatch)"/>
+<rect x="669" y="1292" width="91" height="12" rx="2" fill="url(#hatch)"/>
+<text x="4" y="1324" font-size="11" fill="#222">ソラマメ</text>
+<text x="4" y="1335" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="198" y="1318" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="201" y="1328" font-size="9" fill="#555">南東2</text>
+<rect x="171" y="1318" width="24" height="13" rx="3" fill="none" stroke="#888" stroke-width="1" stroke-dasharray="3,2"/>
+<text x="174" y="1328" font-size="9" fill="#555">西7</text>
+<rect x="331" y="1321" width="52" height="6" rx="1" fill="#6b6b2f" opacity="0.14" stroke="#6b6b2f" stroke-width="0.8" stroke-opacity="0.45" stroke-dasharray="3,2"/>
+<path d="M331 1316 l4 0 l-2 4 z" fill="#6b6b2f" opacity="0.75"/>
+<rect x="383" y="1318" width="481" height="12" rx="2" fill="#6b6b2f" opacity="0.6"/>
+<rect x="799" y="1318" width="65" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="864" y1="1324" x2="877" y2="1324" stroke="#6b6b2f" stroke-width="3" stroke-dasharray="2,4"/>
+<rect x="331" y="1321" width="52" height="6" rx="1" fill="#6b6b2f" opacity="0.14" stroke="#6b6b2f" stroke-width="0.8" stroke-opacity="0.45" stroke-dasharray="3,2"/>
+<path d="M331 1316 l4 0 l-2 4 z" fill="#6b6b2f" opacity="0.75"/>
+<rect x="383" y="1318" width="481" height="12" rx="2" fill="#6b6b2f" opacity="0.6"/>
+<rect x="799" y="1318" width="65" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="864" y1="1324" x2="877" y2="1324" stroke="#6b6b2f" stroke-width="3" stroke-dasharray="2,4"/>
+<text x="4" y="1350" font-size="11" fill="#222">キャベツ（秋まき春…</text>
+<text x="4" y="1361" font-size="9" fill="#777">シティ</text>
+<rect x="198" y="1344" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1" stroke-dasharray="3,2"/>
+<text x="201" y="1354" font-size="9" fill="#555">南東9</text>
+<rect x="344" y="1347" width="65" height="6" rx="1" fill="#5b8c3e" opacity="0.14" stroke="#5b8c3e" stroke-width="0.8" stroke-opacity="0.45" stroke-dasharray="3,2"/>
+<path d="M344 1342 l4 0 l-2 4 z" fill="#5b8c3e" opacity="0.75"/>
+<rect x="409" y="1344" width="377" height="12" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="734" y="1344" width="52" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="786" y1="1350" x2="812" y2="1350" stroke="#5b8c3e" stroke-width="3" stroke-dasharray="2,4"/>
+<text x="4" y="1376" font-size="11" fill="#222">タマネギ</text>
+<text x="4" y="1387" font-size="9" fill="#777">キーパー808</text>
+<rect x="198" y="1370" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="201" y="1380" font-size="9" fill="#555">南東4</text>
+<rect x="162" y="1370" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="165" y="1380" font-size="9" fill="#555">南東8</text>
+<rect x="344" y="1373" width="104" height="6" rx="1" fill="#7a5aa0" opacity="0.14" stroke="#7a5aa0" stroke-width="0.8" stroke-opacity="0.45" stroke-dasharray="3,2"/>
+<path d="M344 1368 l4 0 l-2 4 z" fill="#7a5aa0" opacity="0.75"/>
+<rect x="448" y="1370" width="416" height="12" rx="2" fill="#7a5aa0" opacity="0.6"/>
+<rect x="825" y="1370" width="39" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="864" y1="1376" x2="916" y2="1376" stroke="#7a5aa0" stroke-width="3" stroke-dasharray="2,4"/>
+<rect x="344" y="1373" width="104" height="6" rx="1" fill="#7a5aa0" opacity="0.14" stroke="#7a5aa0" stroke-width="0.8" stroke-opacity="0.45" stroke-dasharray="3,2"/>
+<path d="M344 1368 l4 0 l-2 4 z" fill="#7a5aa0" opacity="0.75"/>
+<rect x="448" y="1370" width="416" height="12" rx="2" fill="#7a5aa0" opacity="0.6"/>
+<rect x="825" y="1370" width="39" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="864" y1="1376" x2="916" y2="1376" stroke="#7a5aa0" stroke-width="3" stroke-dasharray="2,4"/>
+<text x="4" y="1402" font-size="11" fill="#222">タマネギ</text>
+<text x="4" y="1413" font-size="9" fill="#777">ラッキー</text>
+<rect x="207" y="1396" width="24" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="210" y="1406" font-size="9" fill="#555">西2</text>
+<rect x="344" y="1399" width="104" height="6" rx="1" fill="#7a5aa0" opacity="0.14" stroke="#7a5aa0" stroke-width="0.8" stroke-opacity="0.45" stroke-dasharray="3,2"/>
+<path d="M344 1394 l4 0 l-2 4 z" fill="#7a5aa0" opacity="0.75"/>
+<rect x="448" y="1396" width="416" height="12" rx="2" fill="#7a5aa0" opacity="0.6"/>
+<rect x="825" y="1396" width="39" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="864" y1="1402" x2="916" y2="1402" stroke="#7a5aa0" stroke-width="3" stroke-dasharray="2,4"/>
+<text x="4" y="1428" font-size="11" fill="#222">ホウレンソウ</text>
+<text x="4" y="1439" font-size="9" fill="#777">パレード</text>
+<rect x="189" y="1422" width="42" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="192" y="1432" font-size="9" fill="#555">南東12</text>
+<rect x="344" y="1422" width="260" height="12" rx="2" fill="#3e7a8c" opacity="0.6"/>
+<rect x="422" y="1422" width="182" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="604" y1="1428" x2="617" y2="1428" stroke="#3e7a8c" stroke-width="3" stroke-dasharray="2,4"/>
+<text x="4" y="1454" font-size="11" fill="#222">ホウレンソウ</text>
+<text x="4" y="1465" font-size="9" fill="#777">弁天丸</text>
+<rect x="207" y="1448" width="24" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="210" y="1458" font-size="9" fill="#555">西6</text>
+<rect x="344" y="1448" width="260" height="12" rx="2" fill="#3e7a8c" opacity="0.6"/>
+<rect x="422" y="1448" width="182" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="604" y1="1454" x2="617" y2="1454" stroke="#3e7a8c" stroke-width="3" stroke-dasharray="2,4"/>
+<text x="4" y="1480" font-size="11" fill="#222">三陸つぼみ菜</text>
+<text x="4" y="1491" font-size="9" fill="#777">三陸つぼみ菜</text>
+<rect x="198" y="1474" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="201" y="1484" font-size="9" fill="#555">南東1</text>
+<rect x="171" y="1474" width="24" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="174" y="1484" font-size="9" fill="#555">西4</text>
+<rect x="344" y="1474" width="403" height="12" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="617" y="1474" width="130" height="12" rx="2" fill="url(#hatch)"/>
+<rect x="344" y="1474" width="403" height="12" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="617" y="1474" width="130" height="12" rx="2" fill="url(#hatch)"/>
+<text x="4" y="1506" font-size="11" fill="#222">イチゴ</text>
+<text x="4" y="1517" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="198" y="1500" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="201" y="1510" font-size="9" fill="#555">中庭1</text>
+<rect x="162" y="1500" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="165" y="1510" font-size="9" fill="#555">中庭2</text>
+<rect x="126" y="1500" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="129" y="1510" font-size="9" fill="#555">南東3</text>
+<rect x="370" y="1500" width="481" height="12" rx="2" fill="#c04a5a" opacity="0.6"/>
+<rect x="773" y="1500" width="78" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="851" y1="1506" x2="864" y2="1506" stroke="#c04a5a" stroke-width="3" stroke-dasharray="2,4"/>
+<rect x="370" y="1500" width="481" height="12" rx="2" fill="#c04a5a" opacity="0.6"/>
+<rect x="773" y="1500" width="78" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="851" y1="1506" x2="864" y2="1506" stroke="#c04a5a" stroke-width="3" stroke-dasharray="2,4"/>
+<text x="4" y="1532" font-size="11" fill="#222">ニンニク</text>
+<text x="4" y="1543" font-size="9" fill="#777">福地ホワイト六片</text>
+<rect x="180" y="1526" width="51" height="13" rx="3" fill="none" stroke="#888" stroke-width="1" stroke-dasharray="3,2"/>
+<text x="183" y="1536" font-size="9" fill="#555">斜面（東）</text>
+<rect x="370" y="1526" width="507" height="12" rx="2" fill="#7a5aa0" opacity="0.6"/>
+<rect x="851" y="1526" width="26" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="877" y1="1532" x2="916" y2="1532" stroke="#7a5aa0" stroke-width="3" stroke-dasharray="2,4"/>
+<text x="4" y="1558" font-size="11" fill="#222">ホウレンソウ（寒締…</text>
+<text x="4" y="1569" font-size="9" fill="#777">じっくり朝霧</text>
+<rect x="207" y="1552" width="24" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="210" y="1562" font-size="9" fill="#555">西6</text>
+<rect x="370" y="1552" width="260" height="12" rx="2" fill="#3e7a8c" opacity="0.6"/>
+<rect x="513" y="1552" width="117" height="12" rx="2" fill="url(#hatch)"/>
+<text x="4" y="1584" font-size="11" fill="#222">ホウレンソウ（春ま…</text>
+<text x="4" y="1595" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="198" y="1578" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="201" y="1588" font-size="9" fill="#555">中庭2</text>
+<rect x="162" y="1578" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="165" y="1588" font-size="9" fill="#555">北東1</text>
+<rect x="126" y="1578" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="129" y="1588" font-size="9" fill="#555">南東6</text>
+<rect x="669" y="1578" width="156" height="12" rx="2" fill="#3e7a8c" opacity="0.6"/>
+<rect x="786" y="1578" width="39" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="825" y1="1584" x2="838" y2="1584" stroke="#3e7a8c" stroke-width="3" stroke-dasharray="2,4"/>
+<rect x="669" y="1578" width="156" height="12" rx="2" fill="#3e7a8c" opacity="0.6"/>
+<rect x="786" y="1578" width="39" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="825" y1="1584" x2="838" y2="1584" stroke="#3e7a8c" stroke-width="3" stroke-dasharray="2,4"/>
+<rect x="669" y="1578" width="156" height="12" rx="2" fill="#3e7a8c" opacity="0.6"/>
+<rect x="786" y="1578" width="39" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="825" y1="1584" x2="838" y2="1584" stroke="#3e7a8c" stroke-width="3" stroke-dasharray="2,4"/>
+<text x="4" y="1610" font-size="11" fill="#222">カブ（春まき）</text>
+<text x="4" y="1621" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="207" y="1604" width="24" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="210" y="1614" font-size="9" fill="#555">西6</text>
+<rect x="682" y="1604" width="130" height="12" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="760" y="1604" width="52" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="812" y1="1610" x2="825" y2="1610" stroke="#5b8c3e" stroke-width="3" stroke-dasharray="2,4"/>
+<text x="4" y="1636" font-size="11" fill="#222">ジャガイモ</text>
+<text x="4" y="1647" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="207" y="1630" width="24" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="210" y="1640" font-size="9" fill="#555">西1</text>
+<rect x="682" y="1630" width="208" height="12" rx="2" fill="#8c4a6b" opacity="0.6"/>
+<rect x="864" y="1630" width="26" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="890" y1="1636" x2="916" y2="1636" stroke="#8c4a6b" stroke-width="3" stroke-dasharray="2,4"/>
+<text x="4" y="1662" font-size="11" fill="#222">ニンジン（春まき）</text>
+<text x="4" y="1673" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="198" y="1656" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="201" y="1666" font-size="9" fill="#555">中庭2</text>
+<rect x="682" y="1656" width="234" height="12" rx="2" fill="#c2802f" opacity="0.6"/>
+<rect x="864" y="1656" width="52" height="12" rx="2" fill="url(#hatch)"/>
+<line x1="916" y1="1662" x2="916" y2="1662" stroke="#c2802f" stroke-width="3" stroke-dasharray="2,4"/>
+<text x="4" y="1688" font-size="11" fill="#222">ゴボウ</text>
+<text x="4" y="1699" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="207" y="1682" width="24" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="210" y="1692" font-size="9" fill="#555">西5</text>
+<rect x="708" y="1682" width="208" height="12" rx="2" fill="#b0662f" opacity="0.6"/>
+<rect x="890" y="1682" width="3" height="12" rx="2" fill="url(#hatch)"/>
+<text x="4" y="1714" font-size="11" fill="#222">ヤーコン</text>
+<text x="4" y="1725" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="207" y="1708" width="24" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="210" y="1718" font-size="9" fill="#555">西4</text>
+<rect x="708" y="1711" width="78" height="6" rx="1" fill="#b0662f" opacity="0.14" stroke="#b0662f" stroke-width="0.8" stroke-opacity="0.45" stroke-dasharray="3,2"/>
+<path d="M708 1706 l4 0 l-2 4 z" fill="#b0662f" opacity="0.75"/>
+<rect x="786" y="1708" width="130" height="12" rx="2" fill="#b0662f" opacity="0.6"/>
+<text x="4" y="1740" font-size="11" fill="#222">キクイモ</text>
+<text x="4" y="1751" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="171" y="1734" width="60" height="13" rx="3" fill="none" stroke="#888" stroke-width="1" stroke-dasharray="3,2"/>
+<text x="174" y="1744" font-size="9" fill="#555">法面（西南）</text>
+<rect x="721" y="1734" width="195" height="12" rx="2" fill="#b0662f" opacity="0.6"/>
+<text x="4" y="1766" font-size="11" fill="#222">ブロッコリー</text>
+<text x="4" y="1777" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="198" y="1760" width="33" height="13" rx="3" fill="none" stroke="#888" stroke-width="1"/>
+<text x="201" y="1770" font-size="9" fill="#555">南東9</text>
+<rect x="734" y="1763" width="65" height="6" rx="1" fill="#5b8c3e" opacity="0.14" stroke="#5b8c3e" stroke-width="0.8" stroke-opacity="0.45" stroke-dasharray="3,2"/>
+<path d="M734 1758 l4 0 l-2 4 z" fill="#5b8c3e" opacity="0.75"/>
+<rect x="799" y="1760" width="117" height="12" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="877" y="1760" width="39" height="12" rx="2" fill="url(#hatch)"/>
+<text x="4" y="1792" font-size="11" fill="#222">ナガイモ</text>
+<text x="4" y="1803" font-size="9" fill="#c33">⚠️品種未定</text>
+<rect x="207" y="1786" width="24" height="13" rx="3" fill="none" stroke="#888" stroke-width="1" stroke-dasharray="3,2"/>
+<text x="210" y="1796" font-size="9" fill="#555">西0</text>
+<rect x="760" y="1786" width="156" height="12" rx="2" fill="#8a7340" opacity="0.6"/>
+</g>
+</svg></div></div></details><details class='acc l2' open><summary>畝ビュー（どこで、いつ）</summary><div class='acc-body'><p>同じ場所を並べ直した絵。1つの畝に帯が2本以上あっても、それだけでは問題ではない。
+1本の畝を東半分と西半分で分けたり、3条に分けたり、株間に混ぜたりして使っているからで、
+面積が足りていれば同居してよい。</p>
+<p>左端は畝の名前と、その畝の広さ。帯の上には作物・使う広さ・品種を書いた。
+帯の幅に入りきらない品種名は途中で切れる。広さが 0㎡ の作物は、
+ほかの作物の株と株のあいだに混ぜて植えるもので、畝を新しく使うわけではない。</p>
+<p>赤い枠が付くのは、その時期に植える面積の合計が畝の広さを超えているときだけ。
+そこは畝を足すか、株数を減らすか、時期をずらす。</p>
+<div class="figure"><svg viewBox="0 0 732 1694" width="732" style="min-width:732px" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif">
+<defs><pattern id="hatch" width="5" height="12" patternUnits="userSpaceOnUse"><rect width="5" height="12" fill="none"/><line x1="0" y1="0" x2="0" y2="12" stroke="#fff" stroke-width="2" opacity="0.65"/></pattern></defs>
+<rect width="732" height="1694" fill="#fdfdfb"/>
+<g font-size="10" fill="#444">
+<path d="M8 8 l4 0 l-2 4 z" fill="#5b7a4a" opacity="0.75"/>
+<rect x="8" y="13" width="26" height="6" rx="1" fill="#5b7a4a" opacity="0.14" stroke="#5b7a4a" stroke-width="0.8" stroke-opacity="0.45" stroke-dasharray="3,2"/>
+<text x="38" y="19">▲播種→苗を育てている（畑は空き）</text>
+<rect x="218" y="10" width="26" height="11" rx="2" fill="#5b7a4a" opacity="0.6"/>
+<text x="248" y="19">畑を使っている</text>
+<rect x="348" y="10" width="26" height="11" rx="2" fill="#5b7a4a" opacity="0.6"/>
+<rect x="348" y="10" width="26" height="11" rx="2" fill="url(#hatch)"/>
+<text x="378" y="19">穫れる</text>
+<line x1="438" y1="16" x2="464" y2="16" stroke="#5b7a4a" stroke-width="3" stroke-dasharray="2,4"/>
+<text x="468" y="19">保存して食べられる</text>
+<line x1="600" y1="8" x2="600" y2="21" stroke="#c0392b" stroke-width="2"/>
+<text x="608" y="19">今週</text>
+<text x="12" y="32" fill="#777">帯の色は科（アブラナ・ナス…）。同じ色が続くと連作になる</text>
+</g>
+<g transform="translate(0,36)">
+<line x1="48" y1="20" x2="48" y2="1650" stroke="#bbb" stroke-width="1"/>
+<text x="50" y="16" font-size="10" fill="#666">7月</text>
+<line x1="74" y1="20" x2="74" y2="1650" stroke="#bbb" stroke-width="1"/>
+<text x="76" y="16" font-size="10" fill="#666">8月</text>
+<line x1="100" y1="30" x2="100" y2="1650" stroke="#eee" stroke-width="1"/>
+<line x1="126" y1="30" x2="126" y2="1650" stroke="#eee" stroke-width="1"/>
+<line x1="139" y1="20" x2="139" y2="1650" stroke="#bbb" stroke-width="1"/>
+<text x="141" y="16" font-size="10" fill="#666">9月</text>
+<line x1="152" y1="30" x2="152" y2="1650" stroke="#eee" stroke-width="1"/>
+<line x1="178" y1="30" x2="178" y2="1650" stroke="#eee" stroke-width="1"/>
+<line x1="191" y1="20" x2="191" y2="1650" stroke="#bbb" stroke-width="1"/>
+<text x="193" y="16" font-size="10" fill="#666">10月</text>
+<line x1="204" y1="30" x2="204" y2="1650" stroke="#eee" stroke-width="1"/>
+<line x1="230" y1="30" x2="230" y2="1650" stroke="#eee" stroke-width="1"/>
+<line x1="243" y1="20" x2="243" y2="1650" stroke="#bbb" stroke-width="1"/>
+<text x="245" y="16" font-size="10" fill="#666">11月</text>
+<line x1="256" y1="30" x2="256" y2="1650" stroke="#eee" stroke-width="1"/>
+<line x1="282" y1="30" x2="282" y2="1650" stroke="#eee" stroke-width="1"/>
+<line x1="308" y1="20" x2="308" y2="1650" stroke="#bbb" stroke-width="1"/>
+<text x="310" y="16" font-size="10" fill="#666">12月</text>
+<line x1="334" y1="30" x2="334" y2="1650" stroke="#eee" stroke-width="1"/>
+<line x1="347" y1="20" x2="347" y2="1650" stroke="#bbb" stroke-width="1"/>
+<text x="349" y="16" font-size="10" fill="#666">2027年1月</text>
+<line x1="360" y1="30" x2="360" y2="1650" stroke="#eee" stroke-width="1"/>
+<line x1="386" y1="30" x2="386" y2="1650" stroke="#eee" stroke-width="1"/>
+<line x1="399" y1="20" x2="399" y2="1650" stroke="#bbb" stroke-width="1"/>
+<text x="401" y="16" font-size="10" fill="#666">2月</text>
+<line x1="412" y1="30" x2="412" y2="1650" stroke="#eee" stroke-width="1"/>
+<line x1="438" y1="30" x2="438" y2="1650" stroke="#eee" stroke-width="1"/>
+<line x1="451" y1="20" x2="451" y2="1650" stroke="#bbb" stroke-width="1"/>
+<text x="453" y="16" font-size="10" fill="#666">3月</text>
+<line x1="464" y1="30" x2="464" y2="1650" stroke="#eee" stroke-width="1"/>
+<line x1="490" y1="30" x2="490" y2="1650" stroke="#eee" stroke-width="1"/>
+<line x1="516" y1="20" x2="516" y2="1650" stroke="#bbb" stroke-width="1"/>
+<text x="518" y="16" font-size="10" fill="#666">4月</text>
+<line x1="542" y1="30" x2="542" y2="1650" stroke="#eee" stroke-width="1"/>
+<line x1="568" y1="20" x2="568" y2="1650" stroke="#bbb" stroke-width="1"/>
+<text x="570" y="16" font-size="10" fill="#666">5月</text>
+<line x1="594" y1="30" x2="594" y2="1650" stroke="#eee" stroke-width="1"/>
+<line x1="620" y1="30" x2="620" y2="1650" stroke="#eee" stroke-width="1"/>
+<line x1="633" y1="20" x2="633" y2="1650" stroke="#bbb" stroke-width="1"/>
+<text x="635" y="16" font-size="10" fill="#666">6月</text>
+<line x1="646" y1="30" x2="646" y2="1650" stroke="#eee" stroke-width="1"/>
+<line x1="672" y1="30" x2="672" y2="1650" stroke="#eee" stroke-width="1"/>
+<line x1="685" y1="20" x2="685" y2="1650" stroke="#bbb" stroke-width="1"/>
+<text x="687" y="16" font-size="10" fill="#666">7月</text>
+<line x1="698" y1="30" x2="698" y2="1650" stroke="#eee" stroke-width="1"/>
+<line x1="724" y1="30" x2="724" y2="1650" stroke="#eee" stroke-width="1"/>
+<line x1="106" y1="20" x2="106" y2="1650" stroke="#d33" stroke-width="2"/>
+<text x="109" y="16" font-size="10" fill="#d33">今週</text>
+<text x="4" y="46" font-size="11" fill="#222">南東1</text>
+<text x="4" y="57" font-size="9" fill="#777">1.4㎡</text>
+<rect x="48" y="38" width="104" height="11" rx="2" fill="#3f9160" opacity="0.6"/>
+<rect x="48" y="38" width="104" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="74" y="56" width="78" height="11" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="126" y="56" width="26" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="126" y="74" width="143" height="11" rx="2" fill="#b0662f" opacity="0.6"/>
+<rect x="178" y="74" width="91" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="152" y="38" width="403" height="11" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="425" y="38" width="130" height="11" rx="2" fill="url(#hatch)"/>
+<text x="51" y="47" font-size="9" fill="#111">キュウリ 1.4㎡</text>
+<text x="77" y="65" font-size="9" fill="#111">ベビーリーフ 株間 彩りベビーリーフ</text>
+<text x="129" y="83" font-size="9" fill="#111">リーフレタス 0.35㎡</text>
+<text x="155" y="47" font-size="9" fill="#111">三陸つぼみ菜 1.05㎡ 三陸つぼみ菜</text>
+<text x="4" y="108" font-size="11" fill="#222">南東2</text>
+<text x="4" y="119" font-size="9" fill="#777">1.4㎡</text>
+<line x1="0" y1="94" x2="732" y2="94" stroke="#e5e5e0"/>
+<rect x="48" y="100" width="156" height="11" rx="2" fill="#8c4a6b" opacity="0.6"/>
+<rect x="61" y="100" width="143" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="48" y="118" width="156" height="11" rx="2" fill="#8c4a6b" opacity="0.6"/>
+<rect x="61" y="118" width="143" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="48" y="136" width="156" height="11" rx="2" fill="#8c4a6b" opacity="0.6"/>
+<rect x="100" y="136" width="104" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="191" y="154" width="481" height="11" rx="2" fill="#6b6b2f" opacity="0.6"/>
+<rect x="607" y="154" width="65" height="11" rx="2" fill="url(#hatch)"/>
+<text x="51" y="109" font-size="9" fill="#111">ミニトマト 0.7㎡</text>
+<text x="51" y="127" font-size="9" fill="#111">ピーマン 0.42㎡</text>
+<text x="51" y="145" font-size="9" fill="#111">パプリカ 0.28㎡</text>
+<text x="194" y="163" font-size="9" fill="#111">ソラマメ 1.4㎡</text>
+<text x="4" y="188" font-size="11" fill="#222">南東3</text>
+<text x="4" y="199" font-size="9" fill="#777">1.4㎡</text>
+<line x1="0" y1="174" x2="732" y2="174" stroke="#e5e5e0"/>
+<rect x="113" y="180" width="455" height="11" rx="2" fill="#7a5aa0" opacity="0.6"/>
+<rect x="178" y="180" width="104" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="178" y="198" width="481" height="11" rx="2" fill="#c04a5a" opacity="0.6"/>
+<rect x="581" y="198" width="78" height="11" rx="2" fill="url(#hatch)"/>
+<text x="116" y="189" font-size="9" fill="#111">ワケギ 株間</text>
+<text x="181" y="207" font-size="9" fill="#111">イチゴ 1.4㎡</text>
+<text x="4" y="232" font-size="11" fill="#222">南東4</text>
+<text x="4" y="243" font-size="9" fill="#777">0.98㎡</text>
+<line x1="0" y1="218" x2="732" y2="218" stroke="#e5e5e0"/>
+<rect x="48" y="224" width="234" height="11" rx="2" fill="#5a6ea0" opacity="0.6"/>
+<rect x="191" y="224" width="91" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="48" y="242" width="156" height="11" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="74" y="242" width="130" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="256" y="242" width="416" height="11" rx="2" fill="#7a5aa0" opacity="0.6"/>
+<rect x="633" y="242" width="39" height="11" rx="2" fill="url(#hatch)"/>
+<text x="51" y="233" font-size="9" fill="#111">サトイモ 0.98㎡</text>
+<text x="51" y="251" font-size="9" fill="#111">ハツカダイコン 株間 紅白はつか大根</text>
+<text x="259" y="251" font-size="9" fill="#111">タマネギ 0.98㎡ キーパー808</text>
+<text x="4" y="276" font-size="11" fill="#222">南東5</text>
+<text x="4" y="287" font-size="9" fill="#777">0.98㎡</text>
+<line x1="0" y1="262" x2="732" y2="262" stroke="#e5e5e0"/>
+<rect x="74" y="268" width="195" height="11" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="126" y="268" width="143" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="74" y="286" width="182" height="11" rx="2" fill="#3e7a8c" opacity="0.6"/>
+<rect x="126" y="286" width="130" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="74" y="304" width="78" height="11" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="126" y="304" width="26" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="152" y="304" width="91" height="11" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="204" y="304" width="39" height="11" rx="2" fill="url(#hatch)"/>
+<text x="77" y="277" font-size="9" fill="#111">コマツナ 照楽</text>
+<text x="77" y="295" font-size="9" fill="#111">スイスチャード</text>
+<text x="77" y="313" font-size="9" fill="#111">ベビーリーフ 株</text>
+<text x="155" y="313" font-size="9" fill="#111">ハツカダイコン 紅白はつか大根</text>
+<text x="4" y="338" font-size="11" fill="#222">南東6</text>
+<text x="4" y="349" font-size="9" fill="#777">0.98㎡</text>
+<line x1="0" y1="324" x2="732" y2="324" stroke="#e5e5e0"/>
+<rect x="100" y="330" width="221" height="11" rx="2" fill="#b0662f" opacity="0.6"/>
+<rect x="178" y="330" width="143" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="126" y="348" width="195" height="11" rx="2" fill="#b0662f" opacity="0.6"/>
+<rect x="178" y="348" width="143" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="477" y="330" width="156" height="11" rx="2" fill="#3e7a8c" opacity="0.6"/>
+<rect x="594" y="330" width="39" height="11" rx="2" fill="url(#hatch)"/>
+<text x="103" y="339" font-size="9" fill="#111">シュンギク 0.5㎡ 中葉しゅんぎく</text>
+<text x="129" y="357" font-size="9" fill="#111">シュンギク 株間 中葉しゅんぎく</text>
+<text x="480" y="339" font-size="9" fill="#111">ホウレンソウ 0.98㎡</text>
+<text x="4" y="382" font-size="11" fill="#222">南東8</text>
+<text x="4" y="393" font-size="9" fill="#777">1.4㎡</text>
+<line x1="0" y1="368" x2="732" y2="368" stroke="#e5e5e0"/>
+<rect x="61" y="374" width="143" height="11" rx="2" fill="#3f9160" opacity="0.6"/>
+<rect x="126" y="374" width="78" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="61" y="392" width="143" height="11" rx="2" fill="#6b6b2f" opacity="0.6"/>
+<rect x="126" y="392" width="78" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="74" y="410" width="195" height="11" rx="2" fill="#b0662f" opacity="0.6"/>
+<rect x="178" y="410" width="91" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="256" y="374" width="416" height="11" rx="2" fill="#7a5aa0" opacity="0.6"/>
+<rect x="633" y="374" width="39" height="11" rx="2" fill="url(#hatch)"/>
+<text x="64" y="383" font-size="9" fill="#111">キュウリ 0.7㎡ よしなり</text>
+<text x="64" y="401" font-size="9" fill="#111">インゲン 株間 秋どりいんげん〔つるあり〕</text>
+<text x="77" y="419" font-size="9" fill="#111">レタス 株間 グレートレーク（結球）</text>
+<text x="259" y="383" font-size="9" fill="#111">タマネギ 0.7㎡ キーパー808</text>
+<text x="4" y="444" font-size="11" fill="#222">南東9</text>
+<text x="4" y="455" font-size="9" fill="#777">1.4㎡</text>
+<line x1="0" y1="430" x2="732" y2="430" stroke="#e5e5e0"/>
+<rect x="217" y="436" width="377" height="11" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="542" y="436" width="52" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="607" y="436" width="117" height="11" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="685" y="436" width="39" height="11" rx="2" fill="url(#hatch)"/>
+<text x="220" y="445" font-size="9" fill="#111">キャベツ 0.7㎡ シティ</text>
+<text x="610" y="445" font-size="9" fill="#111">ブロッコリー 0.7㎡</text>
+<text x="4" y="470" font-size="11" fill="#222">南東11</text>
+<text x="4" y="481" font-size="9" fill="#777">1.4㎡</text>
+<line x1="0" y1="456" x2="732" y2="456" stroke="#e5e5e0"/>
+<rect x="100" y="462" width="234" height="11" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="230" y="462" width="104" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="126" y="480" width="143" height="11" rx="2" fill="#b0662f" opacity="0.6"/>
+<rect x="178" y="480" width="91" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="126" y="498" width="169" height="11" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="230" y="498" width="65" height="11" rx="2" fill="url(#hatch)"/>
+<text x="103" y="471" font-size="9" fill="#111">ブロッコリー 0.7㎡ 緑嶺</text>
+<text x="129" y="489" font-size="9" fill="#111">リーフレタス 株間</text>
+<text x="129" y="507" font-size="9" fill="#111">ハクサイ 0.7㎡ 黄皇85</text>
+<text x="4" y="532" font-size="11" fill="#222">南東12</text>
+<text x="4" y="543" font-size="9" fill="#777">1.4㎡</text>
+<line x1="0" y1="518" x2="732" y2="518" stroke="#e5e5e0"/>
+<rect x="152" y="524" width="260" height="11" rx="2" fill="#3e7a8c" opacity="0.6"/>
+<rect x="230" y="524" width="182" height="11" rx="2" fill="url(#hatch)"/>
+<text x="155" y="533" font-size="9" fill="#111">ホウレンソウ 1.4㎡ パレード</text>
+<text x="4" y="558" font-size="11" fill="#222">北東1</text>
+<text x="4" y="569" font-size="9" fill="#777">1.4㎡</text>
+<line x1="0" y1="544" x2="732" y2="544" stroke="#e5e5e0"/>
+<rect x="48" y="550" width="377" height="11" rx="2" fill="#7a5aa0" opacity="0.6"/>
+<rect x="295" y="550" width="130" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="48" y="568" width="156" height="11" rx="2" fill="#3e8c7d" opacity="0.6"/>
+<rect x="61" y="568" width="143" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="191" y="586" width="91" height="11" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="243" y="586" width="39" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="477" y="550" width="156" height="11" rx="2" fill="#3e7a8c" opacity="0.6"/>
+<rect x="594" y="550" width="39" height="11" rx="2" fill="url(#hatch)"/>
+<text x="51" y="559" font-size="9" fill="#111">下仁田ネギ 0.7㎡</text>
+<text x="51" y="577" font-size="9" fill="#111">オクラ 0.7㎡</text>
+<text x="194" y="595" font-size="9" fill="#111">ベビーリーフ 0.7㎡ 彩りベビーリーフ</text>
+<text x="480" y="559" font-size="9" fill="#111">ホウレンソウ 0.7㎡</text>
+<text x="4" y="620" font-size="11" fill="#222">北東2</text>
+<text x="4" y="631" font-size="9" fill="#777">1.4㎡</text>
+<line x1="0" y1="606" x2="732" y2="606" stroke="#e5e5e0"/>
+<rect x="74" y="612" width="130" height="11" rx="2" fill="#6b6b2f" opacity="0.6"/>
+<rect x="126" y="612" width="78" height="11" rx="2" fill="url(#hatch)"/>
+<text x="77" y="621" font-size="9" fill="#111">インゲン 1.4㎡ さつきみどり他</text>
+<text x="4" y="646" font-size="11" fill="#222">西0</text>
+<text x="4" y="657" font-size="9" fill="#777">1.4㎡</text>
+<line x1="0" y1="632" x2="732" y2="632" stroke="#e5e5e0"/>
+<rect x="568" y="638" width="156" height="11" rx="2" fill="#8a7340" opacity="0.6"/>
+<text x="571" y="647" font-size="9" fill="#111">ナガイモ</text>
+<text x="4" y="672" font-size="11" fill="#222">西1</text>
+<text x="4" y="683" font-size="9" fill="#777">1.4㎡</text>
+<line x1="0" y1="658" x2="732" y2="658" stroke="#e5e5e0"/>
+<rect x="48" y="664" width="260" height="11" rx="2" fill="#c2802f" opacity="0.6"/>
+<rect x="230" y="664" width="78" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="74" y="682" width="130" height="11" rx="2" fill="#6b6b2f" opacity="0.6"/>
+<rect x="126" y="682" width="78" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="490" y="664" width="208" height="11" rx="2" fill="#8c4a6b" opacity="0.6"/>
+<rect x="672" y="664" width="26" height="11" rx="2" fill="url(#hatch)"/>
+<text x="51" y="673" font-size="9" fill="#111">ニンジン 1.4㎡ 黒田五寸 陽彩</text>
+<text x="77" y="691" font-size="9" fill="#111">インゲン 株間</text>
+<text x="493" y="673" font-size="9" fill="#111">ジャガイモ 1.4㎡</text>
+<text x="4" y="716" font-size="11" fill="#222">西2</text>
+<text x="4" y="727" font-size="9" fill="#777">2.8㎡</text>
+<line x1="0" y1="702" x2="732" y2="702" stroke="#e5e5e0"/>
+<rect x="61" y="708" width="130" height="11" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="126" y="708" width="65" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="61" y="726" width="130" height="11" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="126" y="726" width="65" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="87" y="744" width="104" height="11" rx="2" fill="#3e7a8c" opacity="0.6"/>
+<rect x="126" y="744" width="65" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="87" y="762" width="104" height="11" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="139" y="762" width="52" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="100" y="780" width="91" height="11" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="178" y="780" width="13" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="256" y="708" width="416" height="11" rx="2" fill="#7a5aa0" opacity="0.6"/>
+<rect x="633" y="708" width="39" height="11" rx="2" fill="url(#hatch)"/>
+<text x="64" y="717" font-size="9" fill="#111">コマツナ 0.93㎡ 照楽</text>
+<text x="64" y="735" font-size="9" fill="#111">カブ 0.93㎡ 時なし小かぶ</text>
+<text x="90" y="753" font-size="9" fill="#111">スイスチャード 0.93㎡</text>
+<text x="90" y="771" font-size="9" fill="#111">コマツナ 株間 照楽</text>
+<text x="103" y="789" font-size="9" fill="#111">ミズナ 株間 千筋京菜</text>
+<text x="259" y="717" font-size="9" fill="#111">タマネギ 2.8㎡ ラッキー</text>
+<text x="4" y="814" font-size="11" fill="#222">西3</text>
+<text x="4" y="825" font-size="9" fill="#777">2.8㎡</text>
+<line x1="0" y1="800" x2="732" y2="800" stroke="#e5e5e0"/>
+<rect x="74" y="806" width="208" height="11" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="178" y="806" width="104" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="126" y="824" width="429" height="11" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="516" y="824" width="39" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="126" y="842" width="143" height="11" rx="2" fill="#b0662f" opacity="0.6"/>
+<rect x="178" y="842" width="91" height="11" rx="2" fill="url(#hatch)"/>
+<text x="77" y="815" font-size="9" fill="#111">ダイコン 1.4㎡ 里の宮</text>
+<text x="129" y="833" font-size="9" fill="#111">ノラボウナ 1.4㎡ 清系-9520</text>
+<text x="129" y="851" font-size="9" fill="#111">リーフレタス 株間</text>
+<text x="4" y="876" font-size="11" fill="#222">西4</text>
+<text x="4" y="887" font-size="9" fill="#777">2.8㎡</text>
+<line x1="0" y1="862" x2="732" y2="862" stroke="#e5e5e0"/>
+<rect x="74" y="868" width="208" height="11" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="178" y="868" width="104" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="126" y="886" width="143" height="11" rx="2" fill="#b0662f" opacity="0.6"/>
+<rect x="178" y="886" width="91" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="152" y="904" width="403" height="11" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="425" y="904" width="130" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="594" y="868" width="130" height="11" rx="2" fill="#b0662f" opacity="0.6"/>
+<text x="77" y="877" font-size="9" fill="#111">ダイコン 1.4㎡ 里の宮</text>
+<text x="129" y="895" font-size="9" fill="#111">リーフレタス 株間</text>
+<text x="155" y="913" font-size="9" fill="#111">三陸つぼみ菜 1.4㎡ 三陸つぼみ菜</text>
+<text x="597" y="877" font-size="9" fill="#111">ヤーコン 1.4㎡</text>
+<text x="4" y="938" font-size="11" fill="#222">西5</text>
+<text x="4" y="949" font-size="9" fill="#777">2.8㎡</text>
+<line x1="0" y1="924" x2="732" y2="924" stroke="#e5e5e0"/>
+<rect x="100" y="930" width="156" height="11" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="191" y="930" width="65" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="126" y="948" width="208" height="11" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="308" y="948" width="26" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="126" y="966" width="143" height="11" rx="2" fill="#b0662f" opacity="0.6"/>
+<rect x="178" y="966" width="91" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="516" y="930" width="208" height="11" rx="2" fill="#b0662f" opacity="0.6"/>
+<text x="103" y="939" font-size="9" fill="#111">ハクサイ 1㎡ CRお黄にいり</text>
+<text x="129" y="957" font-size="9" fill="#111">ハクサイ 1.4㎡ 黄皇85</text>
+<text x="129" y="975" font-size="9" fill="#111">リーフレタス 株間</text>
+<text x="519" y="939" font-size="9" fill="#111">ゴボウ 1.4㎡</text>
+<text x="4" y="1000" font-size="11" fill="#222">西6</text>
+<text x="4" y="1011" font-size="9" fill="#777">2.8㎡</text>
+<line x1="0" y1="986" x2="732" y2="986" stroke="#e5e5e0"/>
+<rect x="152" y="992" width="260" height="11" rx="2" fill="#3e7a8c" opacity="0.6"/>
+<rect x="230" y="992" width="182" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="178" y="1010" width="260" height="11" rx="2" fill="#3e7a8c" opacity="0.6"/>
+<rect x="321" y="1010" width="117" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="490" y="992" width="130" height="11" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="568" y="992" width="52" height="11" rx="2" fill="url(#hatch)"/>
+<text x="155" y="1001" font-size="9" fill="#111">ホウレンソウ 1.4㎡ 弁天丸</text>
+<text x="181" y="1019" font-size="9" fill="#111">ホウレンソウ 1.4㎡ じっくり朝霧</text>
+<text x="493" y="1001" font-size="9" fill="#111">カブ 1.4㎡</text>
+<text x="4" y="1044" font-size="11" fill="#222">西7</text>
+<text x="4" y="1055" font-size="9" fill="#777">1.4㎡</text>
+<line x1="0" y1="1030" x2="732" y2="1030" stroke="#e5e5e0"/>
+<rect x="191" y="1036" width="481" height="11" rx="2" fill="#6b6b2f" opacity="0.6"/>
+<rect x="607" y="1036" width="65" height="11" rx="2" fill="url(#hatch)"/>
+<text x="194" y="1045" font-size="9" fill="#111">ソラマメ 0.7㎡</text>
+<text x="4" y="1070" font-size="11" fill="#222">中庭1</text>
+<text x="4" y="1081" font-size="9" fill="#777">1.5㎡</text>
+<line x1="0" y1="1056" x2="732" y2="1056" stroke="#e5e5e0"/>
+<rect x="113" y="1062" width="455" height="11" rx="2" fill="#7a5aa0" opacity="0.6"/>
+<rect x="178" y="1062" width="104" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="178" y="1080" width="481" height="11" rx="2" fill="#c04a5a" opacity="0.6"/>
+<rect x="581" y="1080" width="78" height="11" rx="2" fill="url(#hatch)"/>
+<text x="116" y="1071" font-size="9" fill="#111">ワケギ 株間</text>
+<text x="181" y="1089" font-size="9" fill="#111">イチゴ 1.5㎡</text>
+<text x="4" y="1114" font-size="11" fill="#222">中庭2</text>
+<text x="4" y="1125" font-size="9" fill="#777">2.8㎡</text>
+<line x1="0" y1="1100" x2="732" y2="1100" stroke="#e5e5e0"/>
+<rect x="74" y="1106" width="208" height="11" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="178" y="1106" width="104" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="477" y="1106" width="156" height="11" rx="2" fill="#3e7a8c" opacity="0.6"/>
+<rect x="594" y="1106" width="39" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="490" y="1124" width="234" height="11" rx="2" fill="#c2802f" opacity="0.6"/>
+<rect x="672" y="1124" width="52" height="11" rx="2" fill="url(#hatch)"/>
+<text x="77" y="1115" font-size="9" fill="#111">ダイコン 1.4㎡ 里の宮</text>
+<text x="480" y="1115" font-size="9" fill="#111">ホウレンソウ 0.6㎡</text>
+<text x="493" y="1133" font-size="9" fill="#111">ニンジン 1.5㎡</text>
+<text x="4" y="1158" font-size="11" fill="#222">中庭3</text>
+<text x="4" y="1169" font-size="9" fill="#777">1.5㎡</text>
+<line x1="0" y1="1144" x2="732" y2="1144" stroke="#e5e5e0"/>
+<rect x="74" y="1150" width="182" height="11" rx="2" fill="#3e7a8c" opacity="0.6"/>
+<rect x="126" y="1150" width="130" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="87" y="1168" width="182" height="11" rx="2" fill="#b0662f" opacity="0.6"/>
+<rect x="178" y="1168" width="91" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="100" y="1186" width="221" height="11" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="178" y="1186" width="143" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="100" y="1204" width="52" height="11" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="126" y="1204" width="26" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="113" y="1222" width="611" height="11" rx="2" fill="#c2802f" opacity="0.6"/>
+<rect x="672" y="1222" width="52" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="126" y="1240" width="195" height="11" rx="2" fill="#b0662f" opacity="0.6"/>
+<rect x="178" y="1240" width="143" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="126" y="1258" width="195" height="11" rx="2" fill="#5b8c3e" opacity="0.6"/>
+<rect x="178" y="1258" width="143" height="11" rx="2" fill="url(#hatch)"/>
+<text x="77" y="1159" font-size="9" fill="#111">スイスチャード 0.7㎡</text>
+<text x="90" y="1177" font-size="9" fill="#111">レタス 株間 グレートレーク（結球）</text>
+<text x="103" y="1195" font-size="9" fill="#111">ミズナ 0.35㎡ 千筋京菜</text>
+<text x="103" y="1213" font-size="9" fill="#111">ベビーリーフ 株間 彩りベビーリーフ</text>
+<text x="116" y="1231" font-size="9" fill="#111">イタリアンパセリ 0.1㎡</text>
+<text x="129" y="1249" font-size="9" fill="#111">シュンギク 0.35㎡ 中葉しゅんぎく</text>
+<text x="129" y="1267" font-size="9" fill="#111">ミズナ 株間 千筋京菜</text>
+<text x="4" y="1292" font-size="11" fill="#222">前庭</text>
+<line x1="0" y1="1278" x2="732" y2="1278" stroke="#e5e5e0"/>
+<rect x="48" y="1284" width="676" height="11" rx="2" fill="#b0662f" opacity="0.6"/>
+<rect x="48" y="1302" width="676" height="11" rx="2" fill="#b0662f" opacity="0.6"/>
+<rect x="48" y="1320" width="676" height="11" rx="2" fill="#b0662f" opacity="0.6"/>
+<text x="51" y="1293" font-size="9" fill="#111">ヨモギ</text>
+<text x="51" y="1311" font-size="9" fill="#111">フキ</text>
+<text x="51" y="1329" font-size="9" fill="#111">フキノトウ</text>
+<text x="4" y="1354" font-size="11" fill="#222">斜面（東）</text>
+<line x1="0" y1="1340" x2="732" y2="1340" stroke="#e5e5e0"/>
+<rect x="48" y="1346" width="676" height="11" rx="2" fill="#7a5aa0" opacity="0.6"/>
+<rect x="48" y="1346" width="130" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="48" y="1364" width="676" height="11" rx="2" fill="#777777" opacity="0.6"/>
+<rect x="48" y="1364" width="156" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="48" y="1382" width="676" height="11" rx="2" fill="#777777" opacity="0.6"/>
+<rect x="48" y="1400" width="676" height="11" rx="2" fill="#777777" opacity="0.6"/>
+<rect x="178" y="1400" width="78" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="48" y="1418" width="676" height="11" rx="2" fill="#777777" opacity="0.6"/>
+<rect x="48" y="1436" width="676" height="11" rx="2" fill="#777777" opacity="0.6"/>
+<rect x="48" y="1454" width="676" height="11" rx="2" fill="#777777" opacity="0.6"/>
+<rect x="48" y="1472" width="676" height="11" rx="2" fill="#777777" opacity="0.6"/>
+<rect x="48" y="1490" width="676" height="11" rx="2" fill="#7a5aa0" opacity="0.6"/>
+<rect x="48" y="1490" width="221" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="48" y="1508" width="234" height="11" rx="2" fill="#8a7340" opacity="0.6"/>
+<rect x="243" y="1508" width="39" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="48" y="1526" width="169" height="11" rx="2" fill="#777777" opacity="0.6"/>
+<rect x="48" y="1526" width="169" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="113" y="1544" width="572" height="11" rx="2" fill="#7a5aa0" opacity="0.6"/>
+<rect x="646" y="1544" width="39" height="11" rx="2" fill="url(#hatch)"/>
+<rect x="178" y="1562" width="507" height="11" rx="2" fill="#7a5aa0" opacity="0.6"/>
+<rect x="659" y="1562" width="26" height="11" rx="2" fill="url(#hatch)"/>
+<text x="51" y="1355" font-size="9" fill="#111">ニラ</text>
+<text x="51" y="1373" font-size="9" fill="#111">ミョウガ</text>
+<text x="51" y="1391" font-size="9" fill="#111">タラの芽</text>
+<text x="51" y="1409" font-size="9" fill="#111">シイタケ</text>
+<text x="51" y="1427" font-size="9" fill="#111">ルバーブ</text>
+<text x="51" y="1445" font-size="9" fill="#111">ウド</text>
+<text x="51" y="1463" font-size="9" fill="#111">ウコギ</text>
+<text x="51" y="1481" font-size="9" fill="#111">アスパラガス</text>
+<text x="51" y="1499" font-size="9" fill="#111">小ネギ</text>
+<text x="51" y="1517" font-size="9" fill="#111">ナガイモ</text>
+<text x="51" y="1535" font-size="9" fill="#111">アオジソ</text>
+<text x="116" y="1553" font-size="9" fill="#111">ラッキョウ</text>
+<text x="181" y="1571" font-size="9" fill="#111">ニンニク 0.75㎡ 福地ホワイト六片</text>
+<text x="4" y="1596" font-size="11" fill="#222">法面（西南）</text>
+<line x1="0" y1="1582" x2="732" y2="1582" stroke="#e5e5e0"/>
+<rect x="48" y="1588" width="676" height="11" rx="2" fill="#777777" opacity="0.6"/>
+<rect x="48" y="1606" width="676" height="11" rx="2" fill="#777777" opacity="0.6"/>
+<rect x="529" y="1624" width="195" height="11" rx="2" fill="#b0662f" opacity="0.6"/>
+<text x="51" y="1597" font-size="9" fill="#111">ウルイ</text>
+<text x="51" y="1615" font-size="9" fill="#111">コゴミ</text>
+<text x="532" y="1633" font-size="9" fill="#111">キクイモ</text>
+</g>
+</svg></div></div></details></div></details></main><footer>庭の記録から自動生成。見たい項目をタップで開いてください。</footer><a class='totop' href='#'>↑ 上へ</a><script>function openTo(hash){if(!hash)return;var el=document.getElementById(hash.slice(1));if(!el)return;var n=el;while(n){if(n.tagName==='DETAILS')n.open=true;n=n.parentElement;}if(el.tagName==='DETAILS')el.open=true;el.scrollIntoView({block:'start'});}document.addEventListener('click',function(e){var a=e.target.closest('a[href^="#sec-"]');if(!a)return;e.preventDefault();var h=a.getAttribute('href');if(history.replaceState)history.replaceState(null,'',h);openTo(h);});window.addEventListener('hashchange',function(){openTo(location.hash);});window.addEventListener('DOMContentLoaded',function(){if(location.hash)openTo(location.hash);});window.addEventListener('DOMContentLoaded',function(){var hd=document.querySelector('header.top');if(!hd)return;function u(){var h=hd.offsetHeight;if(h>innerHeight*0.5)h=0;document.documentElement.style.setProperty('--bar',h+'px');var q=document.querySelector('nav.qnav');if(q&&h&&getComputedStyle(q).position==='sticky')h+=q.offsetHeight;document.documentElement.style.setProperty('--hdr',h+'px');}addEventListener('resize',u);u();});window.addEventListener('DOMContentLoaded',function(){var b=document.querySelector('.menu-btn'),d=document.getElementById('site-menu');if(!b||!d)return;var bg=[].slice.call(document.body.children).filter(function(x){return x!==d&&x.tagName!=='SCRIPT';});var FOC='a[href],button:not([disabled]),[tabindex]:not([tabindex="-1"])';function set(o,ret){d.hidden=!o;b.setAttribute('aria-expanded',o?'true':'false');document.body.classList.toggle('menu-open',o);bg.forEach(function(x){if(o)x.setAttribute('inert','');else x.removeAttribute('inert');});if(o){var c=d.querySelector('.drawer-close')||d.querySelector(FOC);if(c)c.focus();}else if(ret!==false){b.focus({preventScroll:true});}}b.addEventListener('click',function(){set(d.hidden);});d.addEventListener('click',function(e){if(e.target.closest('a'))set(false,false);else if(e.target.closest('.drawer-close')||e.target.classList.contains('drawer-backdrop'))set(false);});document.addEventListener('keydown',function(e){if(d.hidden)return;if(e.key==='Escape'){set(false);return;}if(e.key!=='Tab')return;var f=[].slice.call(d.querySelectorAll(FOC)).filter(function(x){return x.offsetParent!==null;});if(!f.length)return;var a=document.activeElement;if(e.shiftKey&&(a===f[0]||!d.contains(a))){e.preventDefault();f[f.length-1].focus();}else if(!e.shiftKey&&(a===f[f.length-1]||!d.contains(a))){e.preventDefault();f[0].focus();}});var mq=window.matchMedia('(min-width: 992px)');function onmq(){if(mq.matches&&!d.hidden)set(false,false);}if(mq.addEventListener)mq.addEventListener('change',onmq);else if(mq.addListener)mq.addListener(onmq);});window.addEventListener('DOMContentLoaded',function(){var q=document.querySelector('nav.qnav');if(!q)return;var ls=[].slice.call(q.querySelectorAll('a[href^="#"]'));var secs=[].slice.call(document.querySelectorAll('main > details.acc.sec, main > .pmbok-signal'));var t=null;function upd(){t=null;var line=q.getBoundingClientRect().bottom+16,cur=null;for(var i=0;i<secs.length;i++){if(secs[i].getBoundingClientRect().top<=line)cur=secs[i].id;}if(innerHeight+scrollY>=document.documentElement.scrollHeight-2&&ls.length)cur=ls[ls.length-1].getAttribute('href').slice(1);ls.forEach(function(a){if(cur&&a.getAttribute('href')==='#'+cur)a.setAttribute('aria-current','location');else a.removeAttribute('aria-current');});}function sch(){if(t)return;t=setTimeout(upd,60);}addEventListener('scroll',sch,{passive:true});addEventListener('resize',sch);upd();});window.addEventListener('DOMContentLoaded',function(){document.querySelectorAll('main pre').forEach(function(pre){var code=pre.querySelector('code');var text=(code||pre).innerText;var b=document.createElement('button');b.className='copy-btn';b.type='button';b.textContent='コピー';b.addEventListener('click',function(ev){ev.stopPropagation();ev.preventDefault();var done=function(f){b.textContent=f?'コピーしました':'コピー失敗';setTimeout(function(){b.textContent='コピー';},1500);};var fb=function(){try{var t=document.createElement('textarea');t.value=text;t.setAttribute('readonly','');t.style.position='fixed';t.style.top='0';t.style.left='0';t.style.opacity='0';document.body.appendChild(t);t.focus();t.select();t.setSelectionRange(0,text.length);var ok=document.execCommand('copy');document.body.removeChild(t);done(ok);}catch(e){done(false);}};if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(function(){done(true);},fb);}else{fb();}});pre.appendChild(b);});});(function(){var ok=!!(window.HTMLDialogElement&&('showModal' in HTMLDialogElement.prototype));var dd=null,cur=null,opener=null,hash0=null;function build(){dd=document.createElement('dialog');dd.className='dd';dd.setAttribute('aria-labelledby','dd-title');dd.innerHTML='<div class="dd-hd"><div class="dd-t"><div class="dd-crumb"></div><h3 class="dd-title" id="dd-title"></h3></div>'+'<button type="button" class="dd-x" aria-label="閉じる">×</button></div><div class="dd-body"></div>'+'<div class="dd-ft"><button type="button" class="dd-close">閉じる</button></div>';document.body.appendChild(dd);dd.addEventListener('click',function(e){if(e.target===dd||e.target.closest('.dd-x')||e.target.closest('.dd-close'))close();});dd.addEventListener('cancel',function(e){e.preventDefault();close();});}function restore(){if(!cur)return;var host=dd.querySelector('.dd-body'),c=host.firstElementChild;if(c)cur.appendChild(c);cur=null;}function open(src,b){if(!dd)build();if(cur&&cur!==src)restore();var host=dd.querySelector('.dd-body');if(cur!==src){cur=src;dd.querySelector('.dd-crumb').textContent=src.getAttribute('data-crumb')||'';dd.querySelector('.dd-title').textContent=src.getAttribute('data-title')||'';var c=src.firstElementChild;if(c)host.appendChild(c);host.scrollTop=0;}opener=b;document.body.classList.add('dd-open');if(!dd.open){hash0=location.hash;dd.showModal();}var row=src.getAttribute('data-row');if(row&&history.replaceState)history.replaceState(null,'','#'+row);}function close(){restore();if(dd&&dd.open)dd.close();document.body.classList.remove('dd-open');if(history.replaceState&&hash0!==null){history.replaceState(null,'',hash0||(location.pathname+location.search));hash0=null;}try{if(opener)opener.focus({preventScroll:true});}catch(e){}opener=null;}document.addEventListener('click',function(e){var b=e.target.closest('.bd-more');if(!b)return;var src=document.getElementById('bdd-'+b.getAttribute('data-bd'));if(!src)return;if(!ok){src.hidden=!src.hidden;return;}open(src,b);});})();</script></body></html>

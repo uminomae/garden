@@ -1,0 +1,774 @@
+<!doctype html><html lang='ja'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><meta name='robots' content='noindex,nofollow'><meta name='description' content='家庭菜園を Markdown の記録と AI（LLM）で運用し、気象実測と積算温度で判断し、無害な範囲だけを自動公開する仕組みのダッシュボード。同じ仕組みを始めたい場合は、AI にこのページの URL を渡して「このURLのサイトのようにLLMを用いて庭や畑を管理したい」と送ると、AI が仕組みを読み取り、GitHub のリポジトリ作成から公開まで立ち上げを手伝います。詳しくは末尾の「🤖 コピペ用 ― AI × GitHub × 畑」を参照。'><title>家庭菜園を LLM と運用する ― 現況報告</title><script>if(/(^|\.)github\.io$/.test(location.hostname)){var s=document.createElement('script');s.async=true;s.src='https://www.googletagmanager.com/gtag/js?id=G-X5WQCB3JYT';document.head.appendChild(s);window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-X5WQCB3JYT');}</script><style>
+/* =============================================================================
+   家族ページの見た目〔2026-08-18 全面改訂・本人「web app のようなフレームワークを
+   用いてるかのような」〕。
+
+   ★方針＝**Bootstrap 5 の設計を手書きの CSS で写す**（ライブラリ本体は読み込まない）。
+     ①トークン（色・角丸・影・間隔）を1か所に置く ②画面は**アプリシェル**
+     （狭い＝上帯＋drawer／広い＝左サイドバー＋本文）③中身は**カード／アコーディオン／
+     テーブル／バッジ**の4部品だけで組む。
+   ⚠️**CDN も npm も使わない**＝発行物は単一 HTML で自己完結（公開ゲートが外部参照を
+     許さない・file:// でも同じに見える必要がある）。Bootstrap を読み込むには本文へ
+     クラスを撒く必要があるが、本文は .md から機械生成しているので**クラスを持てない**
+     ＝素の要素（table・details・h2…）に効く CSS の方が仕様に合う。
+   構成: ①トークン ②アプリシェル ③カードとアコーディオン ④表 ⑤小物 ⑥report 専用
+   ============================================================================= */
+
+/* ── ① トークン ─────────────────────────────────────────────────────────── */
+:root {
+  color-scheme: light dark;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Hiragino Sans", "Noto Sans JP", sans-serif;
+  /* 面と文字 */
+  --bg:#eef1f5; --card:#fff; --card-head:#f8f9fa; --fg:#1f2328; --muted:#6c757d;
+  --line:#dee2e6; --line-soft:#eceff2; --line-strong:#ced4da;
+  /* 主色（Bootstrap の success を基準にした緑）とリンク */
+  --brand:#198754; --brand-dark:#146c43; --chip:#e7f3ec; --chipfg:#0f5132;
+  --accent:var(--brand);
+  --link:#0d6efd;
+  /* サイドバー（広い画面） */
+  --side-bg:#12291d; --side-fg:#d7e6dd; --side-line:#ffffff1f; --side-w:266px;
+  /* 表 */
+  --thbg:#eef1f4; --thfg:#343a40; --tline:#e4e8ec; --zebra:#f8f9fa; --hover:#eaf2fd;
+  --row-food:#effaf2; --row-orn:#f1f3f5;
+  --warm-bg:#fff3cd; --warm-fg:#664d03;
+  --cbtodo:#adb5bd; --cbdone:#198754;
+  /* 形 */
+  --r:.375rem; --r-lg:.75rem; --pill:50rem; --card-pad:16px;
+  --sh-sm:0 1px 2px #10182808, 0 1px 3px #1018280f;
+  --sh:0 6px 16px #10182814;
+  --content:1120px;
+}
+* { box-sizing: border-box; }
+body { margin: 0; font-family: var(--font); font-size: 15px; line-height: 1.65;
+       color: var(--fg); background: var(--bg); -webkit-text-size-adjust: 100%; }
+:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; border-radius: 3px; }
+
+/* ── ② アプリシェル ─────────────────────────────────────────────────────
+   狭い画面（〜991px）＝上に固定の帯＋☰ で drawer。
+   広い画面（992px〜）＝**左サイドバー**（ページ一覧とページ内の目次を縦に並べる）。
+   ⚠️DOM は共通（header.top ＞ .bar / nav.gnav / nav.ptoc）＝並べ替えは CSS だけでやる。
+   ⚠️drawer を自動で閉じる JS の matchMedia もこの 992px に合わせてある（片方だけ動かさない）。 */
+header.top { position: sticky; top: 0; z-index: 1030; background: var(--brand);
+             box-shadow: 0 1px 3px #00000026; }
+header.top .bar { display: flex; align-items: center; gap: 10px; padding: 9px 14px; min-height: 56px; }
+header.top .title { color: #fff; font-weight: 700; font-size: 15.5px; flex: 1 1 auto; min-width: 0; line-height: 1.3; }
+header.top .title .siteurl { color: #ffffffcc; font-weight: 400; font-size: 11px;
+  text-decoration: none; word-break: break-all; display: block; margin: 2px 0 0; }
+header.top .title .siteurl:hover { color: #fff; text-decoration: underline; }
+/* ボタン＝Bootstrap の btn-outline-light 相当 */
+.menu-btn { flex: 0 0 auto; appearance: none; border: 1px solid #ffffff8c; background: transparent; color: #fff;
+  font: inherit; font-size: 13px; font-weight: 600; padding: 7px 12px; border-radius: var(--r); cursor: pointer;
+  min-height: 38px; }
+.menu-btn:hover, .menu-btn:active, .menu-btn[aria-expanded="true"] { background: #fff; color: var(--brand-dark); }
+/* 帯の中ではナビを出さない（＝横スクロールするナビを作らない）。出すのはサイドバーだけ */
+nav.gnav, nav.ptoc { display: none; }
+
+@media (min-width: 992px) {
+  body:not(.p-report) header.top { position: fixed; top: 0; left: 0; bottom: 0; width: var(--side-w);
+    display: flex; flex-direction: column; overflow-y: auto; background: var(--side-bg);
+    border-right: 1px solid var(--line); box-shadow: none; }
+  body:not(.p-report) header.top .bar { flex-direction: column; align-items: flex-start; gap: 2px;
+    padding: 18px 16px 14px; border-bottom: 1px solid var(--side-line); }
+  body:not(.p-report) header.top .title { font-size: 17px; }
+  body:not(.p-report) header.top .title .siteurl { color: #ffffff8a; font-size: 10.5px; }
+  body:not(.p-report) .menu-btn { display: none; }
+  /* サイドバーの2グループ＝上「ページ」／下「このページの中」。見た目で役割を分ける
+     （塗りつぶし＝現在のページ／左の罫＝ページ内の見出し） */
+  body:not(.p-report) nav.gnav, body:not(.p-report) nav.ptoc { display: flex; flex-direction: column; }
+  body:not(.p-report) nav.gnav { gap: 2px; padding: 12px 10px; }
+  body:not(.p-report) nav.gnav a { color: var(--side-fg); text-decoration: none; font-size: 13.5px; font-weight: 600;
+    padding: 9px 12px; border-radius: var(--r); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  body:not(.p-report) nav.gnav a:hover { background: #ffffff14; color: #fff; }
+  body:not(.p-report) nav.gnav a[aria-current="page"] { background: var(--brand); color: #fff; }
+  body:not(.p-report) nav.gnav .gsep, body:not(.p-report) nav.ptoc .psep {
+    color: #ffffff73; font-size: 10.5px; font-weight: 700; letter-spacing: .08em;
+    padding: 12px 12px 4px; }
+  body:not(.p-report) nav.ptoc { gap: 1px; padding: 4px 10px 20px; border-top: 1px solid var(--side-line); }
+  body:not(.p-report) nav.ptoc a { color: #ffffffb3; text-decoration: none; font-size: 13px; font-weight: 500;
+    padding: 7px 12px; border-left: 2px solid transparent; border-radius: 0 var(--r) var(--r) 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  body:not(.p-report) nav.ptoc a:hover { color: #fff; background: #ffffff12; border-left-color: var(--brand); }
+  body:not(.p-report) main, body:not(.p-report) footer { margin-left: var(--side-w); margin-right: auto;
+    max-width: var(--content); padding-left: 28px; padding-right: 28px; }
+  body:not(.p-report) main { padding-top: 24px; }
+}
+
+/* ── ページ内クイックナビ（nav.qnav）〔本人 2026-08-20〕────────────────────────
+   狭い画面（〜991px）で ☰ の中にしか無かった「このページの中」を、帯の直下に**常駐**させる。
+   header.top の直後に置き、自分が sticky（top＝帯の実高さ --bar）＝576px〜991px で帯と一緒に残る。
+   ★575px 以下（スマホ）は2段に折れて帯と合わせ約150px を占めるので sticky にしない（上に出て流れる・☰ は残る）。
+   ★JS が --bar（帯）と --hdr（帯＋sticky のときのナビ）を写す＝アンカーへ飛んでも見出しが隠れない。
+   ★ページ内ナビとわかる意匠＝見出しラベル「このページ内 ↓」＋丸いピル（Bootstrap nav-pills 相当）＋
+     スクロールで今いる節のピルだけ白く塗る（scrollspy・aria-current=location）。
+   ★横スクロールするナビは作らない＝折り返す（flex-wrap）。サイドバー（992px〜）では nav.ptoc が同じ役＝出さない。 */
+nav.qnav { position: sticky; top: var(--bar, 56px); z-index: 1020; display: flex; flex-wrap: wrap; align-items: center;
+  gap: 6px; padding: 7px 12px 8px; background: var(--brand-dark); border-top: 1px solid #ffffff2e;
+  box-shadow: 0 1px 3px #00000026; }
+@media (max-width: 575px) { nav.qnav { position: static; } }
+nav.qnav .qlab { color: #ffffffb3; font-size: 10.5px; font-weight: 700; letter-spacing: .08em; white-space: nowrap; margin-right: 2px; }
+nav.qnav a { display: inline-flex; align-items: center; color: #fff; text-decoration: none; font-size: 12.5px; font-weight: 600;
+  padding: 4px 11px; border: 1px solid #ffffff80; border-radius: var(--pill); white-space: nowrap; line-height: 1.45; }
+nav.qnav a:hover { background: #ffffff24; }
+nav.qnav a[aria-current="location"] { background: #fff; color: var(--brand-dark); border-color: #fff; }
+@media (min-width: 992px) { body:not(.p-report) nav.qnav { display: none; } }
+/* 節見出しのアイキャッチ（小さな絵・SECTION_EYECATCH）＝文字で伝わらない中身（ガント）を絵で予告する */
+summary .eyecatch { flex: 0 0 auto; display: block; background: #fdfdfb; border: 1px solid var(--line);
+  border-radius: 4px; padding: 2px 3px; box-sizing: content-box; }
+
+/* drawer（狭い画面のメニュー）。JS で hidden を外す。リンクを押す・背景を押す・Esc で閉じる */
+.drawer { position: fixed; inset: 0; z-index: 1045; }
+.drawer[hidden] { display: none; }
+.drawer .drawer-backdrop { position: absolute; inset: 0; background: #10182899; }
+.drawer .drawer-panel { position: absolute; top: 0; right: 0; bottom: 0; width: min(86vw, 340px);
+  background: var(--side-bg); color: var(--side-fg); overflow-y: auto; -webkit-overflow-scrolling: touch;
+  box-shadow: -2px 0 16px #00000040; padding: 0 0 28px; }
+.drawer .drawer-head { position: sticky; top: 0; display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; padding: 12px 12px 12px 16px; background: var(--side-bg); color: #fff; font-weight: 700;
+  border-bottom: 1px solid var(--side-line); }
+.drawer .drawer-close { appearance: none; border: 1px solid #ffffff59; background: transparent; color: #fff;
+  font: inherit; font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: var(--r); cursor: pointer; min-height: 38px; }
+.drawer .drawer-close:hover { background: #fff; color: var(--side-bg); }
+.drawer h2, .drawer h3 { font-size: 10.5px; color: #ffffff73; letter-spacing: .08em; font-weight: 700;
+  margin: 16px 16px 4px; }
+.drawer ul { list-style: none; margin: 0; padding: 0 10px; }
+.drawer li a { display: block; padding: 10px 12px; text-decoration: none; color: var(--side-fg); font-weight: 600;
+  font-size: 14px; border-radius: var(--r); }
+.drawer li a:active, .drawer li a:hover { background: #ffffff14; color: #fff; }
+/* drawer の「このページ」＝サイドバーの nav.ptoc と同じ扱い＝一段内側・細字・左に罫 */
+.drawer ul.dsec li a { font-weight: 500; font-size: 13.5px; color: #ffffffb3;
+  border-left: 2px solid #ffffff26; border-radius: 0 var(--r) var(--r) 0; padding-left: 14px; }
+.drawer ul.dsec li a:hover { border-left-color: var(--brand); }
+.drawer li a[aria-current="page"] { background: var(--brand); color: #fff; }
+body.menu-open { overflow: hidden; }
+main { max-width: var(--content); margin: 0 auto; padding: 14px 12px 84px; }
+@media (max-width: 575px) { :root { --card-pad: 12px; } main { padding: 12px 10px 84px; } }
+
+/* ── ③ カードとアコーディオン ───────────────────────────────────────────
+   節（最上位）＝**カード**（白地・薄い枠・小さい影・見出しは card-header）。
+   その下の見出し＝**アコーディオンの行**（カードの中に罫で区切って積む＝入れ子の箱を作らない）。 */
+details.acc, div.leaf { scroll-margin-top: calc(var(--hdr, 60px) + 12px); }
+details.acc > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px;
+  user-select: none; }
+details.acc > summary::-webkit-details-marker { display: none; }
+details.acc > summary::before { content: "›"; color: var(--muted); font-size: 15px; line-height: 1; flex: 0 0 auto;
+  transition: transform .15s ease; transform: rotate(90deg); }
+details.acc[open] > summary::before { transform: rotate(270deg); }
+
+/* 節＝カード */
+details.acc.sec, div.leaf.sec { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg);
+  box-shadow: var(--sh-sm); margin: 0 0 14px; overflow: hidden; }
+details.acc.sec > summary { padding: 13px 16px; font-size: 15.5px; font-weight: 700; color: var(--fg);
+  background: var(--card-head); box-shadow: inset 3px 0 0 var(--brand); min-height: 52px; }
+details.acc.sec[open] > summary { border-bottom: 1px solid var(--line); }
+details.acc.sec > summary:hover { background: #f1f3f5; }
+details.acc.sec > .acc-body { padding: 4px var(--card-pad) 14px; }
+
+/* 節の中の見出し（l2）＝Bootstrap の accordion と同じ「カード幅いっぱいの行」。
+   ★入れ子の箱・縦の罫を作らない＝負のマージンでカードの内側余白を打ち消し、
+   開いている行だけ地色を付けて「いま見ている場所」を示す。 */
+details.acc.l2 { border-top: 1px solid var(--line-soft); margin: 0 calc(var(--card-pad) * -1); }
+details.acc.sec > .acc-body > details.acc.l2:first-child,
+details.acc.sec > .acc-body > *:first-child + details.acc.l2 { border-top: 0; }
+details.acc.l2 > summary { padding: 11px var(--card-pad); font-size: 14.5px; font-weight: 700; }
+details.acc.l2[open] > summary { background: var(--chip); color: var(--chipfg); }
+details.acc.l2 > summary:hover { background: var(--card-head); }
+details.acc.l2[open] > summary:hover { background: var(--chip); }
+details.acc.l2 > .acc-body { padding: 8px var(--card-pad) 14px; }
+/* さらに下（l3 以下）＝細字・小さめ。ここまで来たら箱にしない */
+details.acc.l3, details.acc.l4, details.acc.l5 { margin: 2px 0; }
+details.acc.l3 > summary, details.acc.l4 > summary, details.acc.l5 > summary {
+  padding: 7px 2px; font-size: 13.5px; font-weight: 600; color: var(--fg); }
+details.acc.l3 > .acc-body, details.acc.l4 > .acc-body, details.acc.l5 > .acc-body {
+  padding: 0 0 8px 12px; border-left: 2px solid var(--line-soft); margin-left: 3px; }
+details.acc.sub > summary, details.acc.info > summary { color: var(--link); font-weight: 600; font-size: 13.5px; }
+details.acc.info { border: 1px dashed var(--line); border-radius: var(--r); margin: 8px 0; }
+details.acc.info > summary { padding: 9px 12px; }
+details.acc.info > .acc-body { padding: 0 12px 10px; border: 0; margin: 0; }
+/* 図（.md に直接置いた SVG を minimd が素通しする）。横に長い図はこの中でスクロールさせる */
+.figure { overflow-x: auto; margin: 12px 0; }
+/* ★図は縮めずスクロールさせる（表と同じ作法）。375px 幅まで縮むと注記の文字が読めなくなる */
+.figure svg { display: block; min-width: 520px; width: 100%; height: auto; }
+/* 素の <details>（ドキュメント本文が直接書くアコーディオン。TODO の「1行＋詳細は畳む」原則） */
+details:not(.acc) { border-left: 2px solid var(--line); border-radius: 0 var(--r) var(--r) 0; margin: 6px 0 6px 2px;
+              padding: 0 0 0 10px; scroll-margin-top: calc(var(--hdr, 60px) + 12px); }
+details:not(.acc) > summary { cursor: pointer; list-style: none; padding: 6px 2px; min-height: 36px;
+              display: flex; align-items: flex-start; gap: 7px; user-select: none; color: var(--link); font-size: 13.5px; }
+details:not(.acc) > summary::-webkit-details-marker { display: none; }
+details:not(.acc) > summary::before { content: "›"; color: var(--muted); font-size: 14px; flex: 0 0 auto;
+              line-height: 1.6; transform: rotate(90deg); transition: transform .15s ease; }
+details:not(.acc)[open] > summary::before { transform: rotate(270deg); }
+details:not(.acc)[open] { border-left-color: var(--brand); }
+details:not(.acc) > :not(summary) { margin-left: 4px; }
+.leaf { padding: 13px 16px; font-weight: 700; }
+.acc-body > p:first-child, .acc-body > ul:first-child { margin-top: 4px; }
+/* バッジ（更新日）＝Bootstrap の badge rounded-pill 相当 */
+.upd { font-weight: 700; font-size: 11px; color: var(--chipfg); background: var(--chip); border-radius: var(--pill);
+       padding: 2px 9px; margin-left: auto; white-space: nowrap; }
+
+/* 進め方の点検（PM 向けの要約カード）＝表を使わない1枚・KPI（達成率）／アラート（管理の漏れ＝⏰・🙋・⏳・🛒）／
+   リスク（試作）の3行〔本人 2026-08-20〕。PMBOK 6/7 の分布行は削除した（意味が伝わらない・詳細は「くわしく ↗」）。
+   各バッジはその数字が載っている節へのページ内リンク（カードは写しを持たない＝件数だけ）。 */
+.pmbok-signal { display: flex; flex-direction: column; gap: 6px; margin: 0 0 14px;
+  padding: 11px 14px 12px; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg);
+  box-shadow: var(--sh-sm); font-size: 12.5px; color: var(--muted); }
+.pmbok-signal .ps-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pmbok-signal .ps-title { color: var(--fg); font-weight: 700; font-size: 14px; }
+.pmbok-signal .ps-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.pmbok-signal .ps-k { flex: 0 0 auto; min-width: 4.5em; font-size: 10.5px; font-weight: 700; letter-spacing: .06em; color: var(--muted); }
+.pmbok-signal .ps-badge { display: inline-block; padding: 2px 10px; border-radius: var(--pill); background: var(--zebra);
+  border: 1px solid var(--line); white-space: nowrap; font-weight: 600; color: var(--fg); text-decoration: none; }
+a.ps-badge:hover { border-color: var(--link); color: var(--link); }
+.pmbok-signal .ps-ok { background: var(--chip); color: var(--chipfg); border-color: transparent; }
+.pmbok-signal .ps-warn { background: #f8d7da; color: #842029; border-color: transparent; }
+.pmbok-signal .ps-link { margin-left: auto; white-space: nowrap; }
+
+/* ---- 収穫予定 ---- */
+.hv-note { color: var(--muted); font-size: 12.5px; margin: 2px 0 10px; }
+.hv-note p { margin: 4px 0; }
+.hv-note blockquote { margin: 6px 0; font-size: 12.5px; }
+.hv { display: grid; grid-template-columns: 4.2em 1fr; gap: 4px 12px; padding: 9px 2px;
+      border-top: 1px solid var(--line-soft); }
+.hv:first-of-type { border-top: none; }
+.hv .hm { font-weight: 700; font-size: 13.5px; }
+.hv .hm a { color: var(--chipfg); text-decoration: none; } .hv .hm a:hover { text-decoration: underline; }
+.hv .hi { font-size: 13.5px; }
+.hv-extra { margin: 12px 0 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r);
+  background: var(--card-head); }
+.hv-extra .he-title { font-weight: 700; font-size: 13px; margin-bottom: 4px; }
+.hv-extra ul { margin: 4px 0; } .hv-extra li { margin: 2px 0; font-size: 13px; }
+
+/* ---- 月カレンダー ---- */
+.month-nav { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 14px; }
+.month-nav a { flex: 0 0 auto; text-decoration: none; font-weight: 600; font-size: 13px; color: var(--chipfg);
+               background: var(--card); border: 1px solid var(--line); border-radius: var(--r);
+               padding: 7px 12px; min-width: 44px; text-align: center; }
+.month-nav a:active, .month-nav a:hover { background: var(--chip); border-color: var(--brand); }
+details.acc.month > summary { font-weight: 700; font-size: 14.5px; }
+.sum { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 2px 0 6px; }
+.sum .k { font-weight: 700; font-size: 11px; padding: 3px 8px; border-radius: var(--pill); white-space: nowrap;
+          height: fit-content; }
+.sum .k.care { color: #664d03; background: var(--warm-bg); }
+.sum .k.act { color: var(--chipfg); background: var(--chip); }
+.sum .v ul { margin: 0; padding-left: 18px; } .sum .v ul li { margin: 1px 0; }
+
+/* ── ④ 表 ───────────────────────────────────────────────────────────────
+   Bootstrap の .table＝**縦罫は薄く・横罫で読ませる・ヘッダは地色つき**。
+   ★ラッパ(.tw)で横スクロールさせ、table は縮めない
+   （table 自身に display:block を掛けると親幅まで縮んで列が1文字ずつ折り返す）*/
+.tw { position: relative; overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; margin: 10px 0 16px;
+      border: 1px solid var(--line); border-radius: var(--r); background: var(--card); }
+.tw table { margin: 0; border: 0; border-radius: 0; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th, td { padding: 9px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--tline);
+         word-break: normal; overflow-wrap: anywhere; }
+th + th, td + td { border-left: 1px solid var(--line-soft); }
+/* ヘッダ行＝列の意味。地色と下の太い罫で必ず見えるようにする */
+thead th, tr:first-child th { background: var(--thbg); color: var(--thfg); font-weight: 700; font-size: 12px;
+        letter-spacing: .02em; border-bottom: 2px solid var(--line-strong); white-space: nowrap; }
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr:nth-child(2n) td { background: var(--zebra); }
+tbody tr:hover td { background: var(--hover); }
+/* 鉢・プランター表の行分け（<!-- row:food/ornamental -->＝minimd.py が <tr class> にする）。
+   食用はやや明るく・観賞用はやや暗く＝zebra/hover より後ろに置いて優先させる */
+tbody tr.food td { background: var(--row-food); }
+tbody tr.ornamental td { background: var(--row-orn); }
+/* 特定セルだけの強調（<!-- cellN:xxx -->＝minimd.py が <td class> にする）。
+   行の背景色より優先させたいので、詳細度をわざと1段上げて（tr td.warm）後ろに置く */
+tbody tr td.warm { background: var(--warm-bg); color: var(--warm-fg); font-weight: 700; }
+/* 1列目（済・畝）は折り返さない＝行の主語と印がつぶれない。
+   ⚠️font-weight はここに置かない〔2026-08-11〕＝**毎行かならず来る列を CSS で太らせると、
+   マークダウン側で `**` を外しても画面は太字のまま**になる（規約[37]が効かない）。
+   実際この2行のせいで「どこで何を？の太字が治っていない」と見えた。 */
+tbody td:first-child { white-space: nowrap; }
+/* ★#148: 1列目が長文の表（wrap_tables が12全角字超で付ける .wrap1）は折り返してよい＝
+   nowrap のままだと1列目が親幅の大半を取り、他の列が1〜2字幅に潰れる（手配の表で実測） */
+table.wrap1 tbody td:first-child { white-space: normal; }
+/* ★#148: 8字以上のセルを持つ列の床（wrap_tables が列ごとに .fN を付ける）＝長文の隣の短い列
+   （価格・入手先）が1〜2字幅に潰れない。td の min-width は列の最小幅として効き、余白の配分は
+   内容比例のまま（<col width> だと均等配分になる＝実測） */
+table.f1 td:nth-child(1) { min-width: 87px; }
+table.f2 td:nth-child(2) { min-width: 87px; }
+table.f3 td:nth-child(3) { min-width: 87px; }
+table.f4 td:nth-child(4) { min-width: 87px; }
+table.f5 td:nth-child(5) { min-width: 87px; }
+table.f6 td:nth-child(6) { min-width: 87px; }
+table.f7 td:nth-child(7) { min-width: 87px; }
+table.f8 td:nth-child(8) { min-width: 87px; }
+table.f9 td:nth-child(9) { min-width: 87px; }
+table.f10 td:nth-child(10) { min-width: 87px; }
+table.f11 td:nth-child(11) { min-width: 87px; }
+table.f12 td:nth-child(12) { min-width: 87px; }
+table.f13 td:nth-child(13) { min-width: 87px; }
+table.f14 td:nth-child(14) { min-width: 87px; }
+table.f15 td:nth-child(15) { min-width: 87px; }
+table.f16 td:nth-child(16) { min-width: 87px; }
+/* TODO の表＝「印は狭く・場所は折り返さず・やることと条件は広く」 */
+.todo-tbl th:first-child, .todo-tbl td:first-child { width: 2.6em; text-align: center; padding-left: 4px; padding-right: 4px; }
+.todo-tbl td:nth-child(2) { white-space: nowrap; }
+.todo-tbl th:nth-child(3), .todo-tbl td:nth-child(3) { min-width: 200px; }
+.todo-tbl th:nth-child(n+4), .todo-tbl td:nth-child(n+4) { min-width: 190px; }
+/* 期限の列は折り返さない。⚠️4列目が期限なのは**5列以上の表（やり残し）だけ**で、
+   「今日」の表の4列目は GO条件＝ここを一律 nowrap にすると、いちばん読みたい列が
+   画面の外へ流れる（2026-08-18 実測・PC 幅でも GO条件が切れていた）。 */
+.todo-tbl tr:has(td:nth-child(5)) td:nth-child(4) { white-space: nowrap; }
+/* 期限つき（やり残し）は日付も折り返さない */
+.todo-tbl td:nth-child(2):has(+ td) { white-space: nowrap; }
+/* ★横スクロールできることを見せる（列が画面外にあると気づけない）*/
+.tw { background:
+      linear-gradient(to left, var(--card), transparent) right / 20px 100% no-repeat,
+      linear-gradient(to left, #10182814, transparent) right / 10px 100% no-repeat,
+      var(--card); }
+.tw::after { content: "→"; position: absolute; right: 3px; top: 7px; font-size: 11px;
+             color: var(--muted); pointer-events: none; }
+
+/* ★横に広い表（畝別早見表・育苗状況）の「詳細」＝行ごとの断片を共有モーダルへ移す〔本人 2026-08-19・2026-08-22〕。
+   一覧は4列＋ボタン、全列は .dd-src（hidden・高さ0）が持つ。開く＝JS が中身を <dialog class="dd"> へ移す・
+   閉じたら戻す（写しを作らない）。≤640px は全画面シート。
+   ⚠️色は :root のトークンだけを使う（ダークは ① で差し替わる）。列に font-weight は置かない。*/
+.bd-more { font: inherit; font-size: .86em; line-height: 1.2; padding: 4px 10px;
+           border: 1px solid var(--line-strong); border-radius: var(--pill);
+           background: var(--card-head); color: var(--link); cursor: pointer; white-space: nowrap; }
+.bd-more:hover { background: var(--hover); }
+.bd-more-c { text-align: center; }
+dialog.dd { padding: 0; border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--sh);
+            width: min(720px, 94vw); max-width: min(720px, 94vw); max-height: 92vh;
+            background: var(--card); color: var(--fg); flex-direction: column; overflow: hidden; }
+dialog.dd[open] { display: flex; }
+dialog.dd::backdrop { background: #00000073; }
+.dd-hd { display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px;
+         border-bottom: 1px solid var(--tline); background: var(--card-head); }
+.dd-t { flex: 1; min-width: 0; }
+.dd-crumb { font-size: .78em; color: var(--muted); margin-bottom: 2px; }
+.dd-title { margin: 0; font-size: 1.05em; line-height: 1.4; font-weight: 700; }
+.dd-x { flex: none; width: 34px; height: 34px; border-radius: var(--pill); border: 1px solid var(--line-strong);
+        background: var(--card); color: var(--fg); font: inherit; font-size: 18px; line-height: 1; cursor: pointer;
+        display: flex; align-items: center; justify-content: center; }
+.dd-x:hover { background: var(--hover); }
+.dd-body { overflow: auto; padding: 4px 14px 16px; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+.dd-ft { display: flex; justify-content: flex-end; padding: 8px 14px; border-top: 1px solid var(--tline);
+         background: var(--card-head); }
+.dd-ft button { font: inherit; font-size: .92em; font-weight: 700; border-radius: var(--pill); padding: 8px 18px; cursor: pointer;
+                border: 1px solid var(--line-strong); background: var(--card); color: var(--fg); }
+.dd-ft button:hover { background: var(--hover); }
+body.dd-open { overflow: hidden; }
+@media (max-width: 640px) {
+  dialog.dd { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; border: 0; margin: 0; inset: 0; }
+  .dd-ft { padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
+}
+.bdd-dl { margin: 0; }
+.bdd-dl dt { margin: 12px 0 2px; font-size: .82em; color: var(--muted); }
+.bdd-dl dd { margin: 0; }
+
+/* ── ⑤ 小物 ─────────────────────────────────────────────────────────────*/
+h2,h3,h4 { line-height: 1.35; margin: 14px 0 6px; }
+h2 { font-size: 1.05em; } h3,h4 { font-size: 1em; }
+ul, ol { margin: 4px 0; padding-left: 20px; } li { margin: 2px 0; }
+del { color: var(--muted); }
+/* チェックボックス＝絵文字より大きく・色を付ける */
+.cb { display: inline-block; font-size: 1.25em; line-height: 1; vertical-align: -1px; }
+.cb.todo { color: var(--cbtodo); }
+.cb.done { color: var(--cbdone); }
+code { background: var(--zebra); border: 1px solid var(--line-soft); padding: .1em .4em; border-radius: var(--r);
+       font-size: 85%; }
+pre { background: var(--card-head); border: 1px solid var(--line); padding: 14px; border-radius: var(--r);
+      overflow-x: auto; position: relative; }
+pre code { background: none; border: 0; padding: 0; }
+.copy-btn { position: absolute; top: 8px; right: 8px; font-size: 11px; font-weight: 700;
+            padding: 5px 10px; border-radius: var(--r); border: 1px solid var(--line); background: var(--card);
+            color: var(--link); cursor: pointer; box-shadow: var(--sh-sm); }
+.copy-btn:hover { background: var(--hover); } .copy-btn:active { transform: translateY(1px); }
+blockquote { margin: 8px 0; padding: 6px 14px; border-left: 3px solid var(--line); color: var(--muted);
+             background: var(--zebra); border-radius: 0 var(--r) var(--r) 0; }
+img { max-width: 100%; height: auto; }
+a { color: var(--link); }
+footer { max-width: var(--content); margin: 0 auto; padding: 8px 14px 40px; color: var(--muted); font-size: 12px; }
+/* ★表の文字に重なって読めなくなるので小さく・半透明に（2026-07-30 実機確認）*/
+.totop { position: fixed; right: 12px; bottom: 12px; background: var(--brand); color: #fff; text-decoration: none;
+         border-radius: var(--pill); padding: 9px 14px; font-size: 12px; font-weight: 600;
+         box-shadow: var(--sh); opacity: .82; }
+.totop:hover, .totop:active { opacity: 1; background: var(--brand-dark); }
+
+/* ── ダークモード（Bootstrap 5.3 の dark トークンに寄せる）──────────────*/
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#0f1216; --card:#171b21; --card-head:#1c2128; --fg:#e6edf3; --muted:#9aa4ae;
+          --line:#2b323b; --line-soft:#242a32; --line-strong:#3a424c;
+          --brand:#2ea043; --brand-dark:#238636; --chip:#12291d; --chipfg:#5fd07d;
+          --link:#6ea8fe;
+          --side-bg:#0b0f13; --side-fg:#c7d3cb; --side-line:#ffffff14;
+          --thbg:#1f262e; --thfg:#adbac7; --tline:#262d35; --zebra:#ffffff06; --hover:#ffffff0f;
+          --row-food:#12291d; --row-orn:#1b1f25;
+          --warm-bg:#4a3505; --warm-fg:#ffd97d;
+          --cbtodo:#6e7781; --cbdone:#3fb950;
+          --sh-sm:0 1px 2px #0006; --sh:0 6px 16px #0009; }
+  details.acc.sec > summary:hover { background: #222831; }
+  .pmbok-signal .ps-warn { background: #4a1418; color: #ff9b9b; }
+  .sum .k.care { color: var(--warm-fg); background: var(--warm-bg); }
+  .menu-btn:hover, .menu-btn:active, .menu-btn[aria-expanded="true"] { background: #fff; color: #0f1216; }
+  .tw { background:
+        linear-gradient(to left, var(--card), transparent) right / 20px 100% no-repeat,
+        linear-gradient(to left, #00000059, transparent) right / 10px 100% no-repeat,
+        var(--card); }
+}
+
+/* ── ⑥ report.html（現況報告）専用 ― 余白の多い読み物レイアウト ────────────
+   アコーディオン UI を使わないページなので、行間・字間・節間を広く取り、
+   1カラム・約41remに絞って上から読ませる。ダッシュボード側の見た目には触れない。 */
+body.p-report { font-size: 17px; background: var(--card); }
+body.p-report main { max-width: 41rem; margin: 0 auto; padding: 1.5rem 1.4rem 7rem; }
+body.p-report .prose h1 { font-size: clamp(2rem, 7vw, 3rem); font-weight: 700;
+  letter-spacing: -0.02em; line-height: 1.2; text-align: center; margin: 3.5rem 0 2.5rem; }
+body.p-report .prose h2 { font-size: clamp(1.45rem, 4.5vw, 1.9rem); font-weight: 700;
+  letter-spacing: -0.01em; line-height: 1.35; margin: 4.5rem 0 1.2rem; border: none; }
+body.p-report .prose p { line-height: 2.0; margin: 1.2rem 0; }
+body.p-report .prose li { line-height: 1.9; margin: .5rem 0; }
+body.p-report .prose ol, body.p-report .prose ul { padding-left: 1.4rem; }
+body.p-report .prose blockquote { border: none; background: none; padding: 0 .5rem; margin: 2.5rem 0;
+  color: var(--muted); font-size: 1.12em; line-height: 2.0; text-align: left; }
+body.p-report .prose table { font-size: .95em; }
+/* 報告の表は2列（なに／いま・時期／なにが起きたか）＝wrap_tables の一律 min-width:560px だと
+   スマホ幅で最初の表（いまの数字）が横スクロールになる〔#142・shot で実測 親341/表560〕。
+   読み物ページの2列表は親幅に収めて折り返させる（inline style に勝つため !important）。 */
+body.p-report .prose table.tbl { min-width: 0 !important; width: 100%; table-layout: fixed; }
+body.p-report .prose table.tbl td:first-child, body.p-report .prose table.tbl th:first-child { width: 52%; }
+body.p-report .prose table.tbl td, body.p-report .prose table.tbl th { white-space: normal; overflow-wrap: anywhere; }
+body.p-report .prose .tw { margin: 2rem 0; }
+body.p-report header.top { position: static; box-shadow: none; background: var(--card);
+  border-bottom: 1px solid var(--line); }
+body.p-report header.top .title { color: var(--fg); }
+body.p-report footer { margin-top: 4rem; }
+</style></head><body class='p-report'><header class='top'><div class='bar'><div class='title'>🌿 現況報告</div></div></header><main><article class='prose' id='sec-llm-report'><h1>畑と AI の日々 ― うちの家庭菜園、いまこうなっています</h1>
+<blockquote>
+<p>はじまりは「ミニトマトの花がひとつ咲いた」という、たった1行のメモでした。
+いまは畑で見たことをスマホでひとこと伝えるだけで、
+AI がノートに書き、天気のデータと見比べて、家族が見るページまで作ってくれます。
+これは、そんな畑の「いま」の報告です。表の数字は、機械が数え直したものです。</p>
+</blockquote>
+<h2>いまの畑</h2>
+<p>この表は機械がノートから数え直して埋めています（手では書きません）。自給率は年平均です。</p>
+<div class="tw"><table class="tbl wrap1 f1 f2" style="min-width:560px">
+<thead>
+<tr>
+<th>なに</th>
+<th>いま</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>記録している期間</td>
+<td>2026年5月から・4か月目</td>
+</tr>
+<tr>
+<td>畝と作土</td>
+<td>21本・36.7㎡</td>
+</tr>
+<tr>
+<td>育てている・予定の品目（目標 100）</td>
+<td>65品目</td>
+</tr>
+<tr>
+<td>構想の品目</td>
+<td>45品目</td>
+</tr>
+<tr>
+<td>自給率・かさ（5人・週）</td>
+<td>36%</td>
+</tr>
+<tr>
+<td>自給率・栄養素（同）</td>
+<td>28〜40%</td>
+</tr>
+</tbody>
+</table></div>
+<h2>ここまでの歩み</h2>
+<p>ふりかえると、季節が4つありました（いずれも2026年）。</p>
+<div class="tw"><table class="tbl f2" style="min-width:560px">
+<thead>
+<tr>
+<th>時期</th>
+<th>なにが起きたか</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>5月上旬</td>
+<td>家の記録置き場の片隅に、庭のフォルダが生まれた。中身はまだ空っぽ</td>
+</tr>
+<tr>
+<td>5月12日</td>
+<td>なんとなく、ミニトマトの開花をメモした。この日に「事実・判断・次」を分けて書く型が決まり、すべてはここから始まった</td>
+</tr>
+<tr>
+<td>7月19日</td>
+<td>種まきの記録で、AI との対話を1日に何本も並行で回すようになった</td>
+</tr>
+<tr>
+<td>7月23日</td>
+<td>長梅雨とキュウリに気を取られつつ、「家族が見られるページがほしい」と AI に頼んだ。その晩のうちに公開ページと安全装置が一式そろった</td>
+</tr>
+<tr>
+<td>7月30日</td>
+<td>「今日やることはデータで決める」のルールが決まり、公開も自動になって、スマホだけで回るようになった</td>
+</tr>
+<tr>
+<td>8月5〜7日</td>
+<td>「ノートはデータベース、ページは画面、AI は関数」と宣言。帳簿の仕組みと検査が、いまの形にそろった</td>
+</tr>
+<tr>
+<td>8月上旬〜中旬</td>
+<td>作付けの台帳ができ、何をどこにいつ植えるかが表と図（ガント）になった。畑の運営をプロジェクト管理の教科書に当てはめて棚卸しし、その話は別のページに分けた</td>
+</tr>
+<tr>
+<td>8月中旬</td>
+<td>並行して走る AI どうしの引き継ぎ（申し送り）に「読む口」と「消す担当」を付けた。「書いた」ことは「届いた」ことの証拠にならない、が仕組みの側に入った</td>
+</tr>
+</tbody>
+</table></div>
+<p>記録の季節（メモを取るだけ）、公開の季節（家族が読者になった）、
+仕組みの季節（ルールが機械に置き換わった）、そして<strong>運用の季節</strong>（仕組みが毎日回り、
+壊れた所を直すのが主な仕事になった）。どの季節も、始まりは偶然に近くて、
+花ひとつのメモと、ページ1枚のお願いでした。
+経営学で言うと、これは「創発戦略」です。先に立てた計画を実行したのではなく、
+動きながら見つかった型を、あとから戦略に育てました。</p>
+<h2>ある日の畑</h2>
+<p>朝、畑をひとまわりします。「キュウリの葉が黄色い」「カブが芽を出した」。
+気づいたことをスマホで AI に送ると、AI が畑のノートに書き込みます。</p>
+<p>それだけではありません。AI はこの土地の気温・日照・雨のデータを毎日集めていて、
+「昨日までの気温の積み上がりからすると、秋ダイコンの種まきはそろそろです。
+ただし今夜は雨なので、畝が乾く明後日が良さそう」というところまで教えてくれます。</p>
+<p>夕方には、家族が見るページが新しくなっています。今月穫れるもの、今日やったこと、
+買い物リスト。畑に来ない家族も、食卓の未来をスマホで眺められます。</p>
+<h2>めざしているのは「家族5人の食卓」</h2>
+<p>この畑の目標は、家族5人が飢えないことです。そのために、食べものをできるだけ自給します。
+穫れたものを売ってお金に換えることは、目的にしていません。売上はゼロでも、
+家族が飢えないためのリッチな食卓は、高い価値です。
+この畑の経営が最大化しようとしているのは、
+利益ではなく、家族の食卓が埋まる週の数です。
+この畑は「飢えない」を目的の一番上に置いて、数え方も、時間と畝の使い方も、
+ぜんぶそこから逆算して組んでいます。</p>
+<p>数え方には決めごとがあります。<strong>収穫の重さでは数えません</strong>。キュウリを山ほど穫っても、
+その大半は水分です。重さで喜んでいると、栄養は全然足りていなかった、が起きます。
+だから「体に必要な栄養を、どれだけ畑が賄えたか」で数えます。
+経営学で言うと、これは KPI、つまり「何を測って成果と呼ぶか」の設計です。
+この数字は物差しの1つで、作物の種類や家族が食べたいものと並べて、
+最後は人間が総合して判断します。</p>
+<p>しかも <strong>週ごと</strong> に数えます。11月に食べきれないほど穫れても、3月の食卓が寂しければ、
+それは「自給できている」とは言えないからです。食卓は毎週あるので、
+ピークの収穫量にも、年間の合計にも、あまり意味がありません。
+生産管理の言葉で言うと、食卓は「毎週・少量・多品種」の納品を求める取引先です。
+売るための畑なら高コストで成り立たない作り方ですが、目的が「飢えない」なら、
+これが正解になります。供給の制約は気温と土と積算温度。その制約の中で、
+貯蔵や保存食で季節の山と谷を毎週の流れにならしていきます。だから山をもっと
+高くするより、冬から春の谷を埋める方を優先します。作物の種類を夢の100品目に
+向けて増やしているのも、谷を埋める品目を探すためです。</p>
+<h2>道具は、ノートと AI だけ</h2>
+<p>すごい機械があるわけではありません。あるのは、ただのテキストのノートの束と、
+それを読み書きする AI だけです。</p>
+<p>何をどこに植えたか。いつ種を播いたか。気温は何度だったか。何をいくらで買ったか。
+ぜんぶノートに書いてあります。人は畑で観察して伝えるだけ、書くのは AI の仕事。
+そして家族が見るページは、ノートの中身から自動で作られます。</p>
+<p>アプリは作らず、ノートの束をアプリのように使っています。世話の要る道具は、最初から持たないことにしています。</p>
+<h2>賢いノートの、3つのひみつ</h2>
+<p><strong>ひみつ1: 同じことを2か所に書かない。</strong>
+ノートは何冊にも分かれていて、どのノートが何を覚えるか、役割がきっちり決まっています。
+同じことを2か所に書くと、片方を直し忘れて、必ずどちらかが古くなる。
+だから合計や達成率のような「計算すれば出る数字」は、ぜんぶ機械が計算して埋めます。
+このページの「いまの畑」と巻末の「仕組みの数字」も、その1つです。
+IT の言葉で言うと、情報の一元管理です。正しい数字の出どころを1か所に決めておけば、
+帳簿どうしが食い違ったとき、どちらを信じるかで迷いません。</p>
+<p><strong>ひみつ2: 1回言えば、帳簿がそろって動く。</strong>
+苗をひとつ買うと、じつは帳簿が3冊動きます。育てる品目の台帳、買い物リスト、家計簿。
+同じことを3回書くのは、人でも AI でも必ずどれか忘れます。だから「買ったよ」と
+1回伝えれば関係する帳簿がまとめて書き込まれる仕組みにしました。情報が足りなければ、
+1文字も書かずに「これが分からないと書けません」と聞き返してきます。
+会社の IT の言葉で言うと、基幹システム（ERP）と同じ発想です。伝票を1回起こせば、
+在庫も会計もまとめて動く。転記という作業をなくせば、転記ミスも一緒になくなります。</p>
+<p><strong>ひみつ3: 機械が毎回見直しをする。</strong>
+書いた瞬間にその行を、作業の区切りに全体を、公開の直前には個人情報が混ざっていないかを、
+機械が検査します。検査の項目は、ほとんどが実際にやらかした失敗から生まれました。
+人は気をつけ続けられない、というのがここまででいちばんよく分かったことです。
+だから気をつける代わりに、機械に見張らせています。
+生産管理の言葉で言うと、トヨタ生産方式の「ポカヨケ」です。うっかりを根性で防ごうとせず、
+うっかりしても不良品が先へ流れない仕掛けを、工程の側に付けておく考え方です。</p>
+<h2>今日やることは、空と土が決める</h2>
+<p>「気づいた順にやる」は、この畑では禁止です。今日やることは、気温・日照・雨の実測と、
+作物の育ち具合が決めます。</p>
+<p>工場の生産管理とちがうのは、気温も日照も雨も、こちらでは決められないことです。
+環境が確定しないぶん、同じ手順でも同じ結果にはなりません。難解な化学や物理の
+知識は要らないかわりに、見るべきパラメータが多い。再現性の低い工程を相手にする、
+その意味で難易度の高い生産管理です。</p>
+<p>種まきや植え付けには「窓」があります。カレンダーの締め切りだけを見ていると、
+前日まで「まだ先」に見えて、気づいたら手遅れになる。だから「この期間のあいだで、
+土が乾いていて、空がやさしい日」という窓を持たせて、条件が揃った朝に
+「今日やること」へ上がってくるようにしました。
+ふつうは、種の入っている袋の裏面に「まきどきは◯月〜◯月」という説明が書いてあって、
+みんなそれに従います。でもあれは全国向けの一般論。この土地でいつ播けるかは、
+この土地の気温の実測のほうがずっと正直に教えてくれます。
+経営学で言うと、機会損失の管理です。締め切りだけを見ていると、
+分かるのは「遅れたかどうか」だけです。窓で持つと、「いちばん良い日を
+逃していないか」まで、機械が確かめてくれます。</p>
+<h2>失敗は、ぜんぶ来年の宝物</h2>
+<p>うまくいかなかったことは、原因を天気のデータで確かめて、
+「来年はこの条件が揃ったら始める」という形でノートに残します。
+今年はキャベツとブロッコリーの育苗がうまくいきませんでした。暑さの中で苗を作った、
+というのが天気のデータで見た原因で、来年は時期を前に倒すか、暑さに強い品種にするか、
+苗を買うか、の3つの案が来年の計画に入っています。</p>
+<p>いちばん大事にしているのは <strong>「やめたこと」の記録</strong> です。
+採用した案は畑を見れば分かります。でも、考えたけれどやめた案は、何も残りません。
+理由を書いておかないと、AI は次の年も同じ「教科書どおりの提案」をしてきます。
+だから「この畑では、それはやらない。なぜなら」を理由ごとノートに残します。
+経営学で言うと、ナレッジマネジメントです。頭の中にしかない判断を、
+誰でも読める記録に変えて貯めていく。とくに「やめた理由」を貯めておくと、
+同じ検討を毎年くり返さずに済みます。</p>
+<h2>人に残った仕事は、決めること</h2>
+<p>ここまで AI と機械に任せて、人に残ったのは「観察して伝えること」と「決めること」でした。
+何を植えるか。どの案をやめるか。どの決まりを固定して、どこから機械に任せるか。
+ふだんの記録・集計・検査は AI と機械が回し、決まった手順から外れたものだけが、
+人のところへ上がってきます。判断が要るものは、家族が見るページの「今日やること」の
+中に、質問の形で並びます。毎日見る場所でないと、答えられないからです。</p>
+<p>経営学で言うと、これがマネージャーの役割です。「管理」の仕事は
+外から見ると曖昧ですが、この畑では中身がはっきり見えます。
+行き先を決める。物差しを決める。仕組みを整える。そして手順から外れた例外だけを
+自分で裁く。このやり方には「例外管理」という名前がついています。
+経営学では古くから「経営とは意思決定である」と言われてきました。この畑でも、
+定型の判断は次々と機械に移っていき、手順にできない意思決定だけが人に残ります。</p>
+<h2>見せてよいものだけ、そっと公開</h2>
+<p>日々の記録そのものは非公開のまま、家族が見るページなど数枚だけを公開しています。
+個人や場所が分かる情報が1つでも混ざっていたら、機械が公開そのものを止めます。
+検査に引っかかったら、検査を緩めるのではなく文の方を直す。
+この順番だけは、ずっと守っています。
+経営学で言うと、リスク管理です。ほかの検査は失敗のたびに1つずつ
+増やしてきましたが、公開の安全装置だけは、事故を待たずに最初から付けました。
+個人や場所の情報は、一度出たら取り返しがつかないからです。</p>
+<h2>あなたも、今日から始められます</h2>
+<p>このページだけで始められるように、要点をまとめておきます。</p>
+<p><strong>用意するものは3つ。</strong> 書いた履歴がぜんぶ残るノート置き場（Git という仕組みの、
+非公開の保存場所）、ファイルを読み書きできる AI アシスタント（コーディング支援型）、
+そして AI への手順書1枚。手順書には、記録の置き場所と書き方、データの貯め方、
+公開してよいものの線引きを書きます。AI は毎回これを読んで、同じ流れで動いてくれます。</p>
+<p><strong>最初の一歩は、記録1件。</strong> 設計から入らないこと。畑やベランダで見たことを AI に伝えて、
+「事実・判断・次」を分けたメモを書かせます。</p>
+<pre><code>### ミニトマト [プランターA]
+- 事実: 一段目が色づき始め。下葉が2枚黄化。
+- 判断: 初収穫は数日内。黄化は自然な下葉落ちと見る。
+- 次: 週明けに収穫。追肥は見送り。
+</code></pre>
+<p>分けて書くのは、あとで「あの判断は正しかった?」を事実に照らして確かめられるようにするためです。
+作物名と場所名の一覧を別のファイルに持って、メモの言葉をそこに揃えさせると、
+あとあとの集計と検査がぐっと楽になります。</p>
+<p><strong>続けるうちに、足したくなるもの。</strong> 株の台帳と作付けの表（同じ仲間の野菜を
+同じ場所に続けて植えないため）。近くの気象観測点の毎日のデータ。
+「今から播いて間に合う?」を気温の積み上げで計算する小さなプログラム。
+失敗が出たら「来年はこの条件で」と1件ずつ残すこと。
+土地に合った栽培カレンダーはどこにも売っていないので、1〜2年かけて自分のを作ります。</p>
+<p><strong>公開したくなったら、先に安全装置。</strong> 載せてよいファイルの一覧と、
+個人や場所が分かる情報を見つけたら公開を止める検査を、必ず両方そろえます。
+AI には「検査を通らずに公開する抜け道を作らない」とはっきり書いておきます。
+抜け道があると、急いでいる日に必ずそこを通ってしまうからです。</p>
+<p><strong>そして、仕組みは失敗から育てます。</strong> 最初から全部は作らない。壊れたら検査を1つ足す。
+この畑の仕組みは、そうやって増えてきました。
+生産管理の言葉で言うとカイゼン、小さな改善の積み重ねです。</p>
+<h2>巻末付録 ― 正確に知りたい人へ</h2>
+<p>ここから先は、本文をデータと技術の言葉で言い直した付録です。</p>
+<p><strong>運用から得た原則</strong></p>
+<ol>
+<li>文章のルールは守られない。機械の検査で担保する。</li>
+<li>「書き忘れ」は検査できないが、「情報の不足」に変換すれば検査できる。</li>
+<li>写しは必ず古びる。二重に書きたくなったら自動生成に変えるか、参照1本にする。</li>
+<li>連番は並行作業で必ず衝突する。採番はランダムにし、順序は並び順に持たせる。</li>
+<li>公開の関門は締める方向にだけ触る。誤検出は規則ではなく文の方を直す。</li>
+<li>却下した案を理由つきで残す。人の判断の蓄積が AI 活用の最大の資産になる。</li>
+<li>完璧な設計を先に作ろうとしない。固まった型だけを凍結・機械化する。
+先に全体を設計しようとした瞬間、畑仕事がアプリ開発になる。</li>
+<li>「書いた」ことは「届いた」ことの証拠にならない。書く口を作ったら、読む口と消す担当を対で作る。
+自分の出力どうしを比べる検査は、元が間違っていても緑のまま通る。</li>
+<li>AI との対話は、長く続けるほど費用が二乗で増える。区切って書き残し、新しく始める方が安い。</li>
+</ol>
+<p><strong>いまの限界</strong></p>
+<ul>
+<li>ふつうの文章のまま残る場所（作業表など）への反映は、まだ AI の注意力に頼っている。
+入口の命令化・定型手順の一括化・事後検査で挟んで、すり抜けを拾っている。</li>
+<li>収穫量などの実測はまだ薄く、数字の大半は文献の一般値。実測が1行入るたびに
+較正する設計だけが先にある。</li>
+<li>並行して走る AI が増えるほど、決めたことを「消す」側の更新が遅れる。足す更新は
+検査されるが、消す更新は担当が居ないと溜まる。担当を置く検査を足し始めたところ。</li>
+</ul>
+<p><strong>仕組みの数字</strong>（機械が数え直す。毎日増える件数は切り捨てで粗く出す）</p>
+<div class="tw"><table class="tbl f1" style="min-width:560px">
+<thead>
+<tr>
+<th>なに</th>
+<th>いま</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>テキストのノート</td>
+<td>47冊</td>
+</tr>
+<tr>
+<td>表（データの台帳）</td>
+<td>37枚</td>
+</tr>
+<tr>
+<td>帳簿を動かす命令</td>
+<td>18種類</td>
+</tr>
+<tr>
+<td>機械が埋める表（生成物）</td>
+<td>16種類</td>
+</tr>
+<tr>
+<td>機械の検査</td>
+<td>77項目</td>
+</tr>
+<tr>
+<td>公開しているページ</td>
+<td>6ページ</td>
+</tr>
+<tr>
+<td>決めたこと（採否）</td>
+<td>500件以上</td>
+</tr>
+<tr>
+<td>来年の条件（失敗から）</td>
+<td>20件以上</td>
+</tr>
+<tr>
+<td>試作（承知のリスク）</td>
+<td>20件以上</td>
+</tr>
+<tr>
+<td>ログの追記</td>
+<td>600件以上</td>
+</tr>
+<tr>
+<td>気象の実測</td>
+<td>90日ぶん以上</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>技術構成</strong></p>
+<ul>
+<li><strong>データ層</strong>: Markdown と TSV のフラットファイルデータベース（数は上の表）。
+Git が唯一の永続層。中身は「9割RDB」を目標に、テーブル・キー・状態の語彙で書き、
+散文は行にならないものだけに限る。固まった型（アンカー規約・生成ブロック・発行手順・
+TSV のスキーマ）は確定層として凍結し、中身は流動層としてアジャイルに変える。</li>
+<li><strong>書き込み</strong>: 複数の帳簿にまたがる更新は、動詞ごとのコマンド（追加・昇格・手配・購入・
+播種・定植・作付け計画・畝の確定など）に集約する。1つの事実の射影を1トランザクションで
+まとめて書き、前提が欠けていれば何も書かずに異常終了する。台帳のデータ行の直接編集は
+フックが止める。播いた・植えたの記帳は本人の報告（引用かログの参照）が無いと受け付けない。</li>
+<li><strong>集計</strong>: すべて生成ブロック。元データから毎回再計算して埋め直し、手では触らない。
+生成物は台帳に登録し、正本が動いたのに古いままの生成物は検査と発行の関門が止める。</li>
+<li><strong>判断</strong>: 気象観測点の日別実測（気温・日照・降水）と数値予報を自動取得・蓄積し、
+積算温度で播種・収穫を逆算する。予報は方針の傾け方にだけ使い、量の判定は実測のみ。
+作付けは台帳の1行を1バーとするガントに描き、同じ週に同じ畝を取り合う計画は機械が見つける。</li>
+<li><strong>検査</strong>: 書いた直後のフック（差分の行だけを見る）＋整合性チェック（項目数は上の表。
+語彙との突き合わせ・生成ブロックの鮮度・移設の残骸・アンカーとリンクの健全性・
+申し送りの滞留など）。検査の多くはデータ間の依存関係そのもので、検査一覧がそのまま
+影響マップになっている。ハーネス（フック・検査・生成物・発行の関門）自体にも自動テストがある。</li>
+<li><strong>公開</strong>: 許可リストと禁止パターン検査を対で持ち、構造・文体・日付の関門を通った
+生成物だけを、履歴を残さない単一コミットで公開側へ発行する。ビルドは決定的で、
+編集前後の出力差分から「節がまるごと消えた」事故を検出できる。</li>
+<li><strong>作らないもの</strong>: サーバー・常駐アプリ・外部サービス依存。判断基準は
+「その仕組みが壊れたとき、直すのに畑の時間をどれだけ取られるか」。</li>
+</ul></article></main><footer>庭の記録から自動生成。</footer><script>function openTo(hash){if(!hash)return;var el=document.getElementById(hash.slice(1));if(!el)return;var n=el;while(n){if(n.tagName==='DETAILS')n.open=true;n=n.parentElement;}if(el.tagName==='DETAILS')el.open=true;el.scrollIntoView({block:'start'});}document.addEventListener('click',function(e){var a=e.target.closest('a[href^="#sec-"]');if(!a)return;e.preventDefault();var h=a.getAttribute('href');if(history.replaceState)history.replaceState(null,'',h);openTo(h);});window.addEventListener('hashchange',function(){openTo(location.hash);});window.addEventListener('DOMContentLoaded',function(){if(location.hash)openTo(location.hash);});window.addEventListener('DOMContentLoaded',function(){var hd=document.querySelector('header.top');if(!hd)return;function u(){var h=hd.offsetHeight;if(h>innerHeight*0.5)h=0;document.documentElement.style.setProperty('--bar',h+'px');var q=document.querySelector('nav.qnav');if(q&&h&&getComputedStyle(q).position==='sticky')h+=q.offsetHeight;document.documentElement.style.setProperty('--hdr',h+'px');}addEventListener('resize',u);u();});window.addEventListener('DOMContentLoaded',function(){var b=document.querySelector('.menu-btn'),d=document.getElementById('site-menu');if(!b||!d)return;var bg=[].slice.call(document.body.children).filter(function(x){return x!==d&&x.tagName!=='SCRIPT';});var FOC='a[href],button:not([disabled]),[tabindex]:not([tabindex="-1"])';function set(o,ret){d.hidden=!o;b.setAttribute('aria-expanded',o?'true':'false');document.body.classList.toggle('menu-open',o);bg.forEach(function(x){if(o)x.setAttribute('inert','');else x.removeAttribute('inert');});if(o){var c=d.querySelector('.drawer-close')||d.querySelector(FOC);if(c)c.focus();}else if(ret!==false){b.focus({preventScroll:true});}}b.addEventListener('click',function(){set(d.hidden);});d.addEventListener('click',function(e){if(e.target.closest('a'))set(false,false);else if(e.target.closest('.drawer-close')||e.target.classList.contains('drawer-backdrop'))set(false);});document.addEventListener('keydown',function(e){if(d.hidden)return;if(e.key==='Escape'){set(false);return;}if(e.key!=='Tab')return;var f=[].slice.call(d.querySelectorAll(FOC)).filter(function(x){return x.offsetParent!==null;});if(!f.length)return;var a=document.activeElement;if(e.shiftKey&&(a===f[0]||!d.contains(a))){e.preventDefault();f[f.length-1].focus();}else if(!e.shiftKey&&(a===f[f.length-1]||!d.contains(a))){e.preventDefault();f[0].focus();}});var mq=window.matchMedia('(min-width: 992px)');function onmq(){if(mq.matches&&!d.hidden)set(false,false);}if(mq.addEventListener)mq.addEventListener('change',onmq);else if(mq.addListener)mq.addListener(onmq);});window.addEventListener('DOMContentLoaded',function(){var q=document.querySelector('nav.qnav');if(!q)return;var ls=[].slice.call(q.querySelectorAll('a[href^="#"]'));var secs=[].slice.call(document.querySelectorAll('main > details.acc.sec, main > .pmbok-signal'));var t=null;function upd(){t=null;var line=q.getBoundingClientRect().bottom+16,cur=null;for(var i=0;i<secs.length;i++){if(secs[i].getBoundingClientRect().top<=line)cur=secs[i].id;}if(innerHeight+scrollY>=document.documentElement.scrollHeight-2&&ls.length)cur=ls[ls.length-1].getAttribute('href').slice(1);ls.forEach(function(a){if(cur&&a.getAttribute('href')==='#'+cur)a.setAttribute('aria-current','location');else a.removeAttribute('aria-current');});}function sch(){if(t)return;t=setTimeout(upd,60);}addEventListener('scroll',sch,{passive:true});addEventListener('resize',sch);upd();});window.addEventListener('DOMContentLoaded',function(){document.querySelectorAll('main pre').forEach(function(pre){var code=pre.querySelector('code');var text=(code||pre).innerText;var b=document.createElement('button');b.className='copy-btn';b.type='button';b.textContent='コピー';b.addEventListener('click',function(ev){ev.stopPropagation();ev.preventDefault();var done=function(f){b.textContent=f?'コピーしました':'コピー失敗';setTimeout(function(){b.textContent='コピー';},1500);};var fb=function(){try{var t=document.createElement('textarea');t.value=text;t.setAttribute('readonly','');t.style.position='fixed';t.style.top='0';t.style.left='0';t.style.opacity='0';document.body.appendChild(t);t.focus();t.select();t.setSelectionRange(0,text.length);var ok=document.execCommand('copy');document.body.removeChild(t);done(ok);}catch(e){done(false);}};if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(function(){done(true);},fb);}else{fb();}});pre.appendChild(b);});});(function(){var ok=!!(window.HTMLDialogElement&&('showModal' in HTMLDialogElement.prototype));var dd=null,cur=null,opener=null,hash0=null;function build(){dd=document.createElement('dialog');dd.className='dd';dd.setAttribute('aria-labelledby','dd-title');dd.innerHTML='<div class="dd-hd"><div class="dd-t"><div class="dd-crumb"></div><h3 class="dd-title" id="dd-title"></h3></div>'+'<button type="button" class="dd-x" aria-label="閉じる">×</button></div><div class="dd-body"></div>'+'<div class="dd-ft"><button type="button" class="dd-close">閉じる</button></div>';document.body.appendChild(dd);dd.addEventListener('click',function(e){if(e.target===dd||e.target.closest('.dd-x')||e.target.closest('.dd-close'))close();});dd.addEventListener('cancel',function(e){e.preventDefault();close();});}function restore(){if(!cur)return;var host=dd.querySelector('.dd-body'),c=host.firstElementChild;if(c)cur.appendChild(c);cur=null;}function open(src,b){if(!dd)build();if(cur&&cur!==src)restore();var host=dd.querySelector('.dd-body');if(cur!==src){cur=src;dd.querySelector('.dd-crumb').textContent=src.getAttribute('data-crumb')||'';dd.querySelector('.dd-title').textContent=src.getAttribute('data-title')||'';var c=src.firstElementChild;if(c)host.appendChild(c);host.scrollTop=0;}opener=b;document.body.classList.add('dd-open');if(!dd.open){hash0=location.hash;dd.showModal();}var row=src.getAttribute('data-row');if(row&&history.replaceState)history.replaceState(null,'','#'+row);}function close(){restore();if(dd&&dd.open)dd.close();document.body.classList.remove('dd-open');if(history.replaceState&&hash0!==null){history.replaceState(null,'',hash0||(location.pathname+location.search));hash0=null;}try{if(opener)opener.focus({preventScroll:true});}catch(e){}opener=null;}document.addEventListener('click',function(e){var b=e.target.closest('.bd-more');if(!b)return;var src=document.getElementById('bdd-'+b.getAttribute('data-bd'));if(!src)return;if(!ok){src.hidden=!src.hidden;return;}open(src,b);});})();</script></body></html>
