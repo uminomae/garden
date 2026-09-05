@@ -1,0 +1,1158 @@
+<!doctype html><html lang='ja'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><meta name='robots' content='noindex,nofollow'><meta name='description' content='家庭菜園を Markdown の記録と AI（LLM）で運用し、気象実測と積算温度で判断し、無害な範囲だけを自動公開する仕組みのダッシュボード。同じ仕組みを始めたい場合は、AI にこのページの URL を渡して「このURLのサイトのようにLLMを用いて庭や畑を管理したい」と送ると、AI が仕組みを読み取り、GitHub のリポジトリ作成から公開まで立ち上げを手伝います。詳しくは末尾の「🤖 コピペ用 ― AI × GitHub × 畑」を参照。'><title>キウイ棚 ― 設計と施工</title><script>if(/(^|\.)github\.io$/.test(location.hostname)){var s=document.createElement('script');s.async=true;s.src='https://www.googletagmanager.com/gtag/js?id=G-X5WQCB3JYT';document.head.appendChild(s);window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-X5WQCB3JYT');}</script><style>
+/* =============================================================================
+   家族ページの見た目〔2026-08-18 全面改訂・本人「web app のようなフレームワークを
+   用いてるかのような」〕。
+
+   ★方針＝**Bootstrap 5 の設計を手書きの CSS で写す**（ライブラリ本体は読み込まない）。
+     ①トークン（色・角丸・影・間隔）を1か所に置く ②画面は**アプリシェル**
+     （狭い＝上帯＋drawer／広い＝左サイドバー＋本文）③中身は**カード／アコーディオン／
+     テーブル／バッジ**の4部品だけで組む。
+   ⚠️**CDN も npm も使わない**＝発行物は単一 HTML で自己完結（公開ゲートが外部参照を
+     許さない・file:// でも同じに見える必要がある）。Bootstrap を読み込むには本文へ
+     クラスを撒く必要があるが、本文は .md から機械生成しているので**クラスを持てない**
+     ＝素の要素（table・details・h2…）に効く CSS の方が仕様に合う。
+   構成: ①トークン ②アプリシェル ③カードとアコーディオン ④表 ⑤小物 ⑥report 専用
+   ============================================================================= */
+
+/* ── ① トークン ─────────────────────────────────────────────────────────── */
+:root {
+  color-scheme: light dark;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Hiragino Sans", "Noto Sans JP", sans-serif;
+  /* 面と文字 */
+  --bg:#eef1f5; --card:#fff; --card-head:#f8f9fa; --fg:#1f2328; --muted:#6c757d;
+  --line:#dee2e6; --line-soft:#eceff2; --line-strong:#ced4da;
+  /* 主色（Bootstrap の success を基準にした緑）とリンク */
+  --brand:#198754; --brand-dark:#146c43; --chip:#e7f3ec; --chipfg:#0f5132;
+  --accent:var(--brand);
+  --link:#0d6efd;
+  /* サイドバー（広い画面） */
+  --side-bg:#12291d; --side-fg:#d7e6dd; --side-line:#ffffff1f; --side-w:266px;
+  /* 表 */
+  --thbg:#eef1f4; --thfg:#343a40; --tline:#e4e8ec; --zebra:#f8f9fa; --hover:#eaf2fd;
+  --row-food:#effaf2; --row-orn:#f1f3f5;
+  --warm-bg:#fff3cd; --warm-fg:#664d03;
+  --cbtodo:#adb5bd; --cbdone:#198754;
+  /* 形 */
+  --r:.375rem; --r-lg:.75rem; --pill:50rem; --card-pad:16px;
+  --sh-sm:0 1px 2px #10182808, 0 1px 3px #1018280f;
+  --sh:0 6px 16px #10182814;
+  --content:1120px;
+}
+* { box-sizing: border-box; }
+body { margin: 0; font-family: var(--font); font-size: 15px; line-height: 1.65;
+       color: var(--fg); background: var(--bg); -webkit-text-size-adjust: 100%; }
+:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; border-radius: 3px; }
+
+/* ── ② アプリシェル ─────────────────────────────────────────────────────
+   狭い画面（〜991px）＝上に固定の帯＋☰ で drawer。
+   広い画面（992px〜）＝**左サイドバー**（ページ一覧とページ内の目次を縦に並べる）。
+   ⚠️DOM は共通（header.top ＞ .bar / nav.gnav / nav.ptoc）＝並べ替えは CSS だけでやる。
+   ⚠️drawer を自動で閉じる JS の matchMedia もこの 992px に合わせてある（片方だけ動かさない）。 */
+header.top { position: sticky; top: 0; z-index: 1030; background: var(--brand);
+             box-shadow: 0 1px 3px #00000026; }
+header.top .bar { display: flex; align-items: center; gap: 10px; padding: 9px 14px; min-height: 56px; }
+header.top .title { color: #fff; font-weight: 700; font-size: 15.5px; flex: 1 1 auto; min-width: 0; line-height: 1.3; }
+header.top .title .siteurl { color: #ffffffcc; font-weight: 400; font-size: 11px;
+  text-decoration: none; word-break: break-all; display: block; margin: 2px 0 0; }
+header.top .title .siteurl:hover { color: #fff; text-decoration: underline; }
+/* ボタン＝Bootstrap の btn-outline-light 相当 */
+.menu-btn { flex: 0 0 auto; appearance: none; border: 1px solid #ffffff8c; background: transparent; color: #fff;
+  font: inherit; font-size: 13px; font-weight: 600; padding: 7px 12px; border-radius: var(--r); cursor: pointer;
+  min-height: 38px; }
+.menu-btn:hover, .menu-btn:active, .menu-btn[aria-expanded="true"] { background: #fff; color: var(--brand-dark); }
+/* 帯の中ではナビを出さない（＝横スクロールするナビを作らない）。出すのはサイドバーだけ */
+nav.gnav, nav.ptoc { display: none; }
+
+@media (min-width: 992px) {
+  body:not(.p-report) header.top { position: fixed; top: 0; left: 0; bottom: 0; width: var(--side-w);
+    display: flex; flex-direction: column; overflow-y: auto; background: var(--side-bg);
+    border-right: 1px solid var(--line); box-shadow: none; }
+  body:not(.p-report) header.top .bar { flex-direction: column; align-items: flex-start; gap: 2px;
+    padding: 18px 16px 14px; border-bottom: 1px solid var(--side-line); }
+  body:not(.p-report) header.top .title { font-size: 17px; }
+  body:not(.p-report) header.top .title .siteurl { color: #ffffff8a; font-size: 10.5px; }
+  body:not(.p-report) .menu-btn { display: none; }
+  /* サイドバーの2グループ＝上「ページ」／下「このページの中」。見た目で役割を分ける
+     （塗りつぶし＝現在のページ／左の罫＝ページ内の見出し） */
+  body:not(.p-report) nav.gnav, body:not(.p-report) nav.ptoc { display: flex; flex-direction: column; }
+  body:not(.p-report) nav.gnav { gap: 2px; padding: 12px 10px; }
+  body:not(.p-report) nav.gnav a { color: var(--side-fg); text-decoration: none; font-size: 13.5px; font-weight: 600;
+    padding: 9px 12px; border-radius: var(--r); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  body:not(.p-report) nav.gnav a:hover { background: #ffffff14; color: #fff; }
+  body:not(.p-report) nav.gnav a[aria-current="page"] { background: var(--brand); color: #fff; }
+  body:not(.p-report) nav.gnav .gsep, body:not(.p-report) nav.ptoc .psep {
+    color: #ffffff73; font-size: 10.5px; font-weight: 700; letter-spacing: .08em;
+    padding: 12px 12px 4px; }
+  body:not(.p-report) nav.ptoc { gap: 1px; padding: 4px 10px 20px; border-top: 1px solid var(--side-line); }
+  body:not(.p-report) nav.ptoc a { color: #ffffffb3; text-decoration: none; font-size: 13px; font-weight: 500;
+    padding: 7px 12px; border-left: 2px solid transparent; border-radius: 0 var(--r) var(--r) 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  body:not(.p-report) nav.ptoc a:hover { color: #fff; background: #ffffff12; border-left-color: var(--brand); }
+  body:not(.p-report) main, body:not(.p-report) footer { margin-left: var(--side-w); margin-right: auto;
+    max-width: var(--content); padding-left: 28px; padding-right: 28px; }
+  body:not(.p-report) main { padding-top: 24px; }
+}
+
+/* ── ページ内クイックナビ（nav.qnav）〔本人 2026-08-20〕────────────────────────
+   狭い画面（〜991px）で ☰ の中にしか無かった「このページの中」を、帯の直下に**常駐**させる。
+   header.top の直後に置き、自分が sticky（top＝帯の実高さ --bar）＝576px〜991px で帯と一緒に残る。
+   ★575px 以下（スマホ）は2段に折れて帯と合わせ約150px を占めるので sticky にしない（上に出て流れる・☰ は残る）。
+   ★JS が --bar（帯）と --hdr（帯＋sticky のときのナビ）を写す＝アンカーへ飛んでも見出しが隠れない。
+   ★ページ内ナビとわかる意匠＝見出しラベル「このページ内 ↓」＋丸いピル（Bootstrap nav-pills 相当）＋
+     スクロールで今いる節のピルだけ白く塗る（scrollspy・aria-current=location）。
+   ★横スクロールするナビは作らない＝折り返す（flex-wrap）。サイドバー（992px〜）では nav.ptoc が同じ役＝出さない。 */
+nav.qnav { position: sticky; top: var(--bar, 56px); z-index: 1020; display: flex; flex-wrap: wrap; align-items: center;
+  gap: 6px; padding: 7px 12px 8px; background: var(--brand-dark); border-top: 1px solid #ffffff2e;
+  box-shadow: 0 1px 3px #00000026; }
+@media (max-width: 575px) { nav.qnav { position: static; } }
+nav.qnav .qlab { color: #ffffffb3; font-size: 10.5px; font-weight: 700; letter-spacing: .08em; white-space: nowrap; margin-right: 2px; }
+nav.qnav a { display: inline-flex; align-items: center; color: #fff; text-decoration: none; font-size: 12.5px; font-weight: 600;
+  padding: 4px 11px; border: 1px solid #ffffff80; border-radius: var(--pill); white-space: nowrap; line-height: 1.45; }
+nav.qnav a:hover { background: #ffffff24; }
+nav.qnav a[aria-current="location"] { background: #fff; color: var(--brand-dark); border-color: #fff; }
+@media (min-width: 992px) { body:not(.p-report) nav.qnav { display: none; } }
+/* 節見出しのアイキャッチ（小さな絵・SECTION_EYECATCH）＝文字で伝わらない中身（ガント）を絵で予告する */
+summary .eyecatch { flex: 0 0 auto; display: block; background: #fdfdfb; border: 1px solid var(--line);
+  border-radius: 4px; padding: 2px 3px; box-sizing: content-box; }
+
+/* drawer（狭い画面のメニュー）。JS で hidden を外す。リンクを押す・背景を押す・Esc で閉じる */
+.drawer { position: fixed; inset: 0; z-index: 1045; }
+.drawer[hidden] { display: none; }
+.drawer .drawer-backdrop { position: absolute; inset: 0; background: #10182899; }
+.drawer .drawer-panel { position: absolute; top: 0; right: 0; bottom: 0; width: min(86vw, 340px);
+  background: var(--side-bg); color: var(--side-fg); overflow-y: auto; -webkit-overflow-scrolling: touch;
+  box-shadow: -2px 0 16px #00000040; padding: 0 0 28px; }
+.drawer .drawer-head { position: sticky; top: 0; display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; padding: 12px 12px 12px 16px; background: var(--side-bg); color: #fff; font-weight: 700;
+  border-bottom: 1px solid var(--side-line); }
+.drawer .drawer-close { appearance: none; border: 1px solid #ffffff59; background: transparent; color: #fff;
+  font: inherit; font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: var(--r); cursor: pointer; min-height: 38px; }
+.drawer .drawer-close:hover { background: #fff; color: var(--side-bg); }
+.drawer h2, .drawer h3 { font-size: 10.5px; color: #ffffff73; letter-spacing: .08em; font-weight: 700;
+  margin: 16px 16px 4px; }
+.drawer ul { list-style: none; margin: 0; padding: 0 10px; }
+.drawer li a { display: block; padding: 10px 12px; text-decoration: none; color: var(--side-fg); font-weight: 600;
+  font-size: 14px; border-radius: var(--r); }
+.drawer li a:active, .drawer li a:hover { background: #ffffff14; color: #fff; }
+/* drawer の「このページ」＝サイドバーの nav.ptoc と同じ扱い＝一段内側・細字・左に罫 */
+.drawer ul.dsec li a { font-weight: 500; font-size: 13.5px; color: #ffffffb3;
+  border-left: 2px solid #ffffff26; border-radius: 0 var(--r) var(--r) 0; padding-left: 14px; }
+.drawer ul.dsec li a:hover { border-left-color: var(--brand); }
+.drawer li a[aria-current="page"] { background: var(--brand); color: #fff; }
+body.menu-open { overflow: hidden; }
+main { max-width: var(--content); margin: 0 auto; padding: 14px 12px 84px; }
+@media (max-width: 575px) { :root { --card-pad: 12px; } main { padding: 12px 10px 84px; } }
+
+/* ── ③ カードとアコーディオン ───────────────────────────────────────────
+   節（最上位）＝**カード**（白地・薄い枠・小さい影・見出しは card-header）。
+   その下の見出し＝**アコーディオンの行**（カードの中に罫で区切って積む＝入れ子の箱を作らない）。 */
+details.acc, div.leaf { scroll-margin-top: calc(var(--hdr, 60px) + 12px); }
+details.acc > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px;
+  user-select: none; }
+details.acc > summary::-webkit-details-marker { display: none; }
+details.acc > summary::before { content: "›"; color: var(--muted); font-size: 15px; line-height: 1; flex: 0 0 auto;
+  transition: transform .15s ease; transform: rotate(90deg); }
+details.acc[open] > summary::before { transform: rotate(270deg); }
+
+/* 節＝カード */
+details.acc.sec, div.leaf.sec { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg);
+  box-shadow: var(--sh-sm); margin: 0 0 14px; overflow: hidden; }
+details.acc.sec > summary { padding: 13px 16px; font-size: 15.5px; font-weight: 700; color: var(--fg);
+  background: var(--card-head); box-shadow: inset 3px 0 0 var(--brand); min-height: 52px; }
+details.acc.sec[open] > summary { border-bottom: 1px solid var(--line); }
+details.acc.sec > summary:hover { background: #f1f3f5; }
+details.acc.sec > .acc-body { padding: 4px var(--card-pad) 14px; }
+
+/* 節の中の見出し（l2）＝Bootstrap の accordion と同じ「カード幅いっぱいの行」。
+   ★入れ子の箱・縦の罫を作らない＝負のマージンでカードの内側余白を打ち消し、
+   開いている行だけ地色を付けて「いま見ている場所」を示す。 */
+details.acc.l2 { border-top: 1px solid var(--line-soft); margin: 0 calc(var(--card-pad) * -1); }
+details.acc.sec > .acc-body > details.acc.l2:first-child,
+details.acc.sec > .acc-body > *:first-child + details.acc.l2 { border-top: 0; }
+details.acc.l2 > summary { padding: 11px var(--card-pad); font-size: 14.5px; font-weight: 700; }
+details.acc.l2[open] > summary { background: var(--chip); color: var(--chipfg); }
+details.acc.l2 > summary:hover { background: var(--card-head); }
+details.acc.l2[open] > summary:hover { background: var(--chip); }
+details.acc.l2 > .acc-body { padding: 8px var(--card-pad) 14px; }
+/* さらに下（l3 以下）＝細字・小さめ。ここまで来たら箱にしない */
+details.acc.l3, details.acc.l4, details.acc.l5 { margin: 2px 0; }
+details.acc.l3 > summary, details.acc.l4 > summary, details.acc.l5 > summary {
+  padding: 7px 2px; font-size: 13.5px; font-weight: 600; color: var(--fg); }
+details.acc.l3 > .acc-body, details.acc.l4 > .acc-body, details.acc.l5 > .acc-body {
+  padding: 0 0 8px 12px; border-left: 2px solid var(--line-soft); margin-left: 3px; }
+details.acc.sub > summary, details.acc.info > summary { color: var(--link); font-weight: 600; font-size: 13.5px; }
+details.acc.info { border: 1px dashed var(--line); border-radius: var(--r); margin: 8px 0; }
+details.acc.info > summary { padding: 9px 12px; }
+details.acc.info > .acc-body { padding: 0 12px 10px; border: 0; margin: 0; }
+/* 図（.md に直接置いた SVG を minimd が素通しする）。横に長い図はこの中でスクロールさせる */
+.figure { overflow-x: auto; margin: 12px 0; }
+/* ★図は縮めずスクロールさせる（表と同じ作法）。375px 幅まで縮むと注記の文字が読めなくなる */
+.figure svg { display: block; min-width: 520px; width: 100%; height: auto; }
+/* 素の <details>（ドキュメント本文が直接書くアコーディオン。TODO の「1行＋詳細は畳む」原則） */
+details:not(.acc) { border-left: 2px solid var(--line); border-radius: 0 var(--r) var(--r) 0; margin: 6px 0 6px 2px;
+              padding: 0 0 0 10px; scroll-margin-top: calc(var(--hdr, 60px) + 12px); }
+details:not(.acc) > summary { cursor: pointer; list-style: none; padding: 6px 2px; min-height: 36px;
+              display: flex; align-items: flex-start; gap: 7px; user-select: none; color: var(--link); font-size: 13.5px; }
+details:not(.acc) > summary::-webkit-details-marker { display: none; }
+details:not(.acc) > summary::before { content: "›"; color: var(--muted); font-size: 14px; flex: 0 0 auto;
+              line-height: 1.6; transform: rotate(90deg); transition: transform .15s ease; }
+details:not(.acc)[open] > summary::before { transform: rotate(270deg); }
+details:not(.acc)[open] { border-left-color: var(--brand); }
+details:not(.acc) > :not(summary) { margin-left: 4px; }
+.leaf { padding: 13px 16px; font-weight: 700; }
+.acc-body > p:first-child, .acc-body > ul:first-child { margin-top: 4px; }
+/* バッジ（更新日）＝Bootstrap の badge rounded-pill 相当 */
+.upd { font-weight: 700; font-size: 11px; color: var(--chipfg); background: var(--chip); border-radius: var(--pill);
+       padding: 2px 9px; margin-left: auto; white-space: nowrap; }
+
+/* 進め方の点検（PM 向けの要約カード）＝表を使わない1枚・KPI（達成率）／アラート（管理の漏れ＝⏰・🙋・⏳・🛒）／
+   リスク（試作）の3行〔本人 2026-08-20〕。PMBOK 6/7 の分布行は削除した（意味が伝わらない・詳細は「くわしく ↗」）。
+   各バッジはその数字が載っている節へのページ内リンク（カードは写しを持たない＝件数だけ）。 */
+.pmbok-signal { display: flex; flex-direction: column; gap: 6px; margin: 0 0 14px;
+  padding: 11px 14px 12px; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg);
+  box-shadow: var(--sh-sm); font-size: 12.5px; color: var(--muted); }
+.pmbok-signal .ps-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pmbok-signal .ps-title { color: var(--fg); font-weight: 700; font-size: 14px; }
+.pmbok-signal .ps-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.pmbok-signal .ps-k { flex: 0 0 auto; min-width: 4.5em; font-size: 10.5px; font-weight: 700; letter-spacing: .06em; color: var(--muted); }
+.pmbok-signal .ps-badge { display: inline-block; padding: 2px 10px; border-radius: var(--pill); background: var(--zebra);
+  border: 1px solid var(--line); white-space: nowrap; font-weight: 600; color: var(--fg); text-decoration: none; }
+a.ps-badge:hover { border-color: var(--link); color: var(--link); }
+.pmbok-signal .ps-ok { background: var(--chip); color: var(--chipfg); border-color: transparent; }
+.pmbok-signal .ps-warn { background: #f8d7da; color: #842029; border-color: transparent; }
+.pmbok-signal .ps-link { white-space: nowrap; }
+/* 外部リンクは1つの塊として右端へ（2本とも margin-left:auto にすると間が開き、
+   片方だけ auto にすると狭い画面で2本目が左端へ落ちる＝390px と 900px で実測して決めた） */
+.pmbok-signal .ps-links { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+
+/* ---- 収穫予定 ---- */
+.hv-note { color: var(--muted); font-size: 12.5px; margin: 2px 0 10px; }
+.hv-note p { margin: 4px 0; }
+.hv-note blockquote { margin: 6px 0; font-size: 12.5px; }
+.hv { display: grid; grid-template-columns: 4.2em 1fr; gap: 4px 12px; padding: 9px 2px;
+      border-top: 1px solid var(--line-soft); }
+.hv:first-of-type { border-top: none; }
+.hv .hm { font-weight: 700; font-size: 13.5px; }
+.hv .hm a { color: var(--chipfg); text-decoration: none; } .hv .hm a:hover { text-decoration: underline; }
+.hv .hi { font-size: 13.5px; }
+.hv-extra { margin: 12px 0 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r);
+  background: var(--card-head); }
+.hv-extra .he-title { font-weight: 700; font-size: 13px; margin-bottom: 4px; }
+.hv-extra ul { margin: 4px 0; } .hv-extra li { margin: 2px 0; font-size: 13px; }
+
+/* ---- 月カレンダー ---- */
+.month-nav { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 14px; }
+.month-nav a { flex: 0 0 auto; text-decoration: none; font-weight: 600; font-size: 13px; color: var(--chipfg);
+               background: var(--card); border: 1px solid var(--line); border-radius: var(--r);
+               padding: 7px 12px; min-width: 44px; text-align: center; }
+.month-nav a:active, .month-nav a:hover { background: var(--chip); border-color: var(--brand); }
+details.acc.month > summary { font-weight: 700; font-size: 14.5px; }
+.sum { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 2px 0 6px; }
+.sum .k { font-weight: 700; font-size: 11px; padding: 3px 8px; border-radius: var(--pill); white-space: nowrap;
+          height: fit-content; }
+.sum .k.care { color: #664d03; background: var(--warm-bg); }
+.sum .k.act { color: var(--chipfg); background: var(--chip); }
+.sum .v ul { margin: 0; padding-left: 18px; } .sum .v ul li { margin: 1px 0; }
+
+/* ── ④ 表 ───────────────────────────────────────────────────────────────
+   Bootstrap の .table＝**縦罫は薄く・横罫で読ませる・ヘッダは地色つき**。
+   ★ラッパ(.tw)で横スクロールさせ、table は縮めない
+   （table 自身に display:block を掛けると親幅まで縮んで列が1文字ずつ折り返す）*/
+.tw { position: relative; overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; margin: 10px 0 16px;
+      border: 1px solid var(--line); border-radius: var(--r); background: var(--card); }
+.tw table { margin: 0; border: 0; border-radius: 0; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th, td { padding: 9px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--tline);
+         word-break: normal; overflow-wrap: anywhere; }
+th + th, td + td { border-left: 1px solid var(--line-soft); }
+/* ヘッダ行＝列の意味。地色と下の太い罫で必ず見えるようにする */
+thead th, tr:first-child th { background: var(--thbg); color: var(--thfg); font-weight: 700; font-size: 12px;
+        letter-spacing: .02em; border-bottom: 2px solid var(--line-strong); white-space: nowrap; }
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr:nth-child(2n) td { background: var(--zebra); }
+tbody tr:hover td { background: var(--hover); }
+/* 鉢・プランター表の行分け（<!-- row:food/ornamental -->＝minimd.py が <tr class> にする）。
+   食用はやや明るく・観賞用はやや暗く＝zebra/hover より後ろに置いて優先させる */
+tbody tr.food td { background: var(--row-food); }
+tbody tr.ornamental td { background: var(--row-orn); }
+/* 特定セルだけの強調（<!-- cellN:xxx -->＝minimd.py が <td class> にする）。
+   行の背景色より優先させたいので、詳細度をわざと1段上げて（tr td.warm）後ろに置く */
+tbody tr td.warm { background: var(--warm-bg); color: var(--warm-fg); font-weight: 700; }
+/* 1列目（済・畝）は折り返さない＝行の主語と印がつぶれない。
+   ⚠️font-weight はここに置かない〔2026-08-11〕＝**毎行かならず来る列を CSS で太らせると、
+   マークダウン側で `**` を外しても画面は太字のまま**になる（規約[37]が効かない）。
+   実際この2行のせいで「どこで何に？の太字が治っていない」と見えた。 */
+tbody td:first-child { white-space: nowrap; }
+/* ★#148: 1列目が長文の表（wrap_tables が12全角字超で付ける .wrap1）は折り返してよい＝
+   nowrap のままだと1列目が親幅の大半を取り、他の列が1〜2字幅に潰れる（手配の表で実測） */
+table.wrap1 tbody td:first-child { white-space: normal; }
+/* ★#148: 8字以上のセルを持つ列の床（wrap_tables が列ごとに .fN を付ける）＝長文の隣の短い列
+   （価格・入手先）が1〜2字幅に潰れない。td の min-width は列の最小幅として効き、余白の配分は
+   内容比例のまま（<col width> だと均等配分になる＝実測） */
+table.f1 td:nth-child(1) { min-width: 87px; }
+table.f2 td:nth-child(2) { min-width: 87px; }
+table.f3 td:nth-child(3) { min-width: 87px; }
+table.f4 td:nth-child(4) { min-width: 87px; }
+table.f5 td:nth-child(5) { min-width: 87px; }
+table.f6 td:nth-child(6) { min-width: 87px; }
+table.f7 td:nth-child(7) { min-width: 87px; }
+table.f8 td:nth-child(8) { min-width: 87px; }
+table.f9 td:nth-child(9) { min-width: 87px; }
+table.f10 td:nth-child(10) { min-width: 87px; }
+table.f11 td:nth-child(11) { min-width: 87px; }
+table.f12 td:nth-child(12) { min-width: 87px; }
+table.f13 td:nth-child(13) { min-width: 87px; }
+table.f14 td:nth-child(14) { min-width: 87px; }
+table.f15 td:nth-child(15) { min-width: 87px; }
+table.f16 td:nth-child(16) { min-width: 87px; }
+/* TODO の表＝「印は狭く・場所は折り返さず・やることと条件は広く」 */
+.todo-tbl th:first-child, .todo-tbl td:first-child { width: 2.6em; text-align: center; padding-left: 4px; padding-right: 4px; }
+.todo-tbl td:nth-child(2) { white-space: nowrap; }
+/* 3列目＝分類（作業のジャンル1語・2026-08-25〜）＝狭く・折り返さない。
+   ⚠️**分類列を持つ表だけ**に掛ける（.todo-kind＝wrap_tables が `<th>分類</th>` を見て付ける）。
+   .todo-tbl 一律だと、3列目が散文の表（📢 AIからの報告＝済|日付|報告）まで nowrap になり、
+   1セルが 3,264px（＝改行なし・横スクロール）になっていた〔本人 2026-08-26 実測・PC 幅でも折れない〕。
+   ⚠️ここに font-weight を置かない（[37] が効かなくなる＝上の警告と同じ理由） */
+.todo-tbl.todo-kind th:nth-child(3), .todo-tbl.todo-kind td:nth-child(3) { width: 4.5em; white-space: nowrap; text-align: center; }
+.todo-tbl th:nth-child(4), .todo-tbl td:nth-child(4) { min-width: 200px; }
+.todo-tbl th:nth-child(n+5), .todo-tbl td:nth-child(n+5) { min-width: 190px; }
+/* 期限の列は折り返さない。⚠️5列目が期限なのは**6列以上の表（やり残し）だけ**で、
+   「今日」の表の5列目は GO条件＝ここを一律 nowrap にすると、いちばん読みたい列が
+   画面の外へ流れる（2026-08-18 実測・PC 幅でも GO条件が切れていた）。
+   ⚠️2026-08-25 に分類列が入って列が1本ずれた＝4→5・5→6 */
+.todo-tbl tr:has(td:nth-child(6)) td:nth-child(5) { white-space: nowrap; }
+/* 期限つき（やり残し）は日付も折り返さない */
+.todo-tbl td:nth-child(2):has(+ td) { white-space: nowrap; }
+/* ★横スクロールできることを見せる（列が画面外にあると気づけない）*/
+.tw { background:
+      linear-gradient(to left, var(--card), transparent) right / 20px 100% no-repeat,
+      linear-gradient(to left, #10182814, transparent) right / 10px 100% no-repeat,
+      var(--card); }
+.tw::after { content: "→"; position: absolute; right: 3px; top: 7px; font-size: 11px;
+             color: var(--muted); pointer-events: none; }
+
+/* ★横に広い表（畝別早見表・育苗状況）の「詳細」＝行ごとの断片を共有モーダルへ移す〔本人 2026-08-19・2026-08-22〕。
+   一覧は4列＋ボタン、全列は .dd-src（hidden・高さ0）が持つ。開く＝JS が中身を <dialog class="dd"> へ移す・
+   閉じたら戻す（写しを作らない）。≤640px は全画面シート。
+   ⚠️色は :root のトークンだけを使う（ダークは ① で差し替わる）。列に font-weight は置かない。*/
+.bd-more { font: inherit; font-size: .86em; line-height: 1.2; padding: 4px 10px;
+           border: 1px solid var(--line-strong); border-radius: var(--pill);
+           background: var(--card-head); color: var(--link); cursor: pointer; white-space: nowrap; }
+.bd-more:hover { background: var(--hover); }
+.bd-more-c { text-align: center; }
+/* ★「コピー」＝行の全文をクリップボードへ（Claude への作業報告に貼る）〔本人 2026-09-03〕。
+   見た目は「詳細」と同じ部品（同じ枠・同じ高さ）＝列が2本並んでも別物に見えない。
+   押した直後だけラベルが「済」に変わる（1.4秒で戻す）＝押せたことが指を離す前に分かる。 */
+.bd-copy { font: inherit; font-size: .86em; line-height: 1.2; padding: 4px 8px;
+           border: 1px solid var(--line-strong); border-radius: var(--pill);
+           background: var(--card-head); color: var(--link); cursor: pointer; white-space: nowrap; }
+.bd-copy:hover { background: var(--hover); }
+.bd-copy.is-done { color: var(--fg); background: var(--hover); }
+.bd-copy-c { text-align: center; }
+/* ★スマホ（≤640px）はボタン2本ぶんの幅が「やること」から出る＝実測 390px で 142→84px
+   （床ちょうど＝6.2字/行）まで痩せた。ボタン側を詰めて 110px 前後（8字/行）まで戻す。
+   ⚠️高さは詰めない（指の当たり判定を狭めない）＝横の padding と字送りだけ。 */
+@media (max-width: 640px) {
+  table.cond th.bd-more-c, table.cond td.bd-more-c,
+  table.cond th.bd-copy-c, table.cond td.bd-copy-c { padding-left: 2px; padding-right: 2px; }
+  .bd-more, .bd-copy { font-size: .76em; padding: 4px 6px; }
+}
+/* ★但し書きの ⓘ〔本人 2026-08-26「シンプル、平易、コンパクトにできないのかな？」「スマホ対応で」〕。
+   本文に置く小さなボタン＝押すと「詳細」と同じ共有モーダル（≤640px は下から出るシート＝下の dd-note）。
+   ⚠️高さ 36px＝**指の当たり判定の目安 44px には足りない**（本文の行に埋める部品なので幅を取らせない）。
+     その代わり**幅は見出しぶんある**（実測 390px で 103×36px）＝押しどころは横に広い。
+   ⚠️ここに font-weight を置かない（[37] の太字検査は本文だけを見る＝表示層で太らせない）。 */
+.bd-note { font-size: .82em; padding: 7px 12px; min-height: 36px; color: var(--muted); }
+.noteline { margin: 2px 0 10px; }
+/* ★畳んだ表（一覧＋「詳細」）＝**横スクロールしない幅**〔本人 2026-08-26「バックログのカラムの
+   改行がないため見づらい。横スクロールしない幅、かつ詳細カラムは詳細ボタンにジャストに固定。
+   長い文字列の入るカラムをフレキシブル、かつ改行するように」〕。
+   ★.cond＝畳んだ表ぜんぶ（詳細列をボタン幅に固定・全列を折り返す）／.cond-fit＝そのうち
+   **画面幅に収める**もの（COND_FIT_COLS_MAX＝4列以下）。5列以上は 390px で 3字/行まで潰れる
+   （実測）ので横スクロールのまま＝収まらない幅に押し込まない。*/
+table.cond-fit { min-width: 0; width: 100%; }
+/* 畳んでいない TODO の表でも3列以下は画面幅に収める（📢 AIからの報告） */
+table.todo-fit { min-width: 0; width: 100%; }
+/* 長文の列にも床＝6.2字/行（shot-family-page.py の「つぶれ」判定 6字/行を割らない）。
+   内容比例の配分は床の上で効く＝長い列がフレキシブルに広がり、短い列は床で止まる。
+   ⚠️床が親幅に入らないほど狭い場所（入れ子の奥・実測 308px）は、床を割らずに少しだけ横へ出す
+   （＝つぶすより出す）。*/
+table.cond-fit th, table.cond-fit td { min-width: 84px; }
+/* 「どこで何に？」＝`南東12<br>（ホウレンソウ）` の下段が 8全角字（108px）＝ここに床を敷かないと
+   内容比例の配分で 61px（4.4字/行）まで痩せ、品目名が3行に折れる（実測 390px）*/
+table.cond-fit.cond-todo th:nth-child(2), table.cond-fit.cond-todo td:nth-child(2) { min-width: 8.2em; }
+/* 長い文字列の入る列＝フレキシブル＋折り返す。1列目の nowrap（tbody td:first-child）もここで解く
+   ＝畳んだ表の1列目は畝名・品目名・ロットで、nowrap のままだと1列が幅を独占する（#148 と同じ形）*/
+table.cond th, table.cond td { white-space: normal; overflow-wrap: anywhere;
+        padding-left: 8px; padding-right: 8px; }   /* padding 12→8px＝同じ列幅で読める字数が増える */
+/* 「詳細」列＝ボタン幅ちょうどに固定。width:1px＋nowrap は auto layout で「最小幅＝中身の幅」＝
+   ボタンにジャストで、余った幅は全部 長文の列へ回る */
+table.cond th:last-child, table.cond td:last-child,
+table.cond th.bd-more-c, table.cond td.bd-more-c,
+table.cond th.bd-copy-c, table.cond td.bd-copy-c { width: 1px; min-width: 0; white-space: nowrap;
+        text-align: center; padding-left: 4px; padding-right: 4px; }
+/* 済（チェック）の列だけは印1つぶんに固定＝畳んだ TODO の表（.cond-todo） */
+table.cond-todo th:first-child, table.cond-todo td:first-child { width: 2.6em; min-width: 0;
+        text-align: center; padding-left: 4px; padding-right: 4px; }
+/* スクロールしない表に「→」とグラデーション（＝スクロールできる合図）を出さない */
+.tw.tw-fit { background: var(--card); }
+.tw.tw-fit::after { content: none; }
+dialog.dd { padding: 0; border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--sh);
+            width: min(720px, 94vw); max-width: min(720px, 94vw); max-height: 92vh;
+            background: var(--card); color: var(--fg); flex-direction: column; overflow: hidden; }
+dialog.dd[open] { display: flex; }
+dialog.dd::backdrop { background: #00000073; }
+.dd-hd { display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px;
+         border-bottom: 1px solid var(--tline); background: var(--card-head); }
+.dd-t { flex: 1; min-width: 0; }
+.dd-crumb { font-size: .78em; color: var(--muted); margin-bottom: 2px; }
+.dd-title { margin: 0; font-size: 1.05em; line-height: 1.4; font-weight: 700; }
+.dd-x { flex: none; width: 34px; height: 34px; border-radius: var(--pill); border: 1px solid var(--line-strong);
+        background: var(--card); color: var(--fg); font: inherit; font-size: 18px; line-height: 1; cursor: pointer;
+        display: flex; align-items: center; justify-content: center; }
+.dd-x:hover { background: var(--hover); }
+.dd-body { overflow: auto; padding: 4px 14px 16px; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+.dd-ft { display: flex; justify-content: flex-end; padding: 8px 14px; border-top: 1px solid var(--tline);
+         background: var(--card-head); }
+.dd-ft button { font: inherit; font-size: .92em; font-weight: 700; border-radius: var(--pill); padding: 8px 18px; cursor: pointer;
+                border: 1px solid var(--line-strong); background: var(--card); color: var(--fg); }
+.dd-ft button:hover { background: var(--hover); }
+body.dd-open { overflow: hidden; }
+@media (max-width: 640px) {
+  dialog.dd { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; border: 0; margin: 0; inset: 0; }
+  .dd-ft { padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
+  /* ★但し書き（ⓘ）＝中身が数行しか無いので下から出るシートにする（全画面だと余白だけの画面になる） */
+  dialog.dd.dd-note { height: auto; max-height: 86dvh; inset: auto 0 0 0; margin-top: auto;
+                      border-radius: var(--r-lg) var(--r-lg) 0 0; }
+}
+.bdd-dl { margin: 0; }
+.bdd-dl dt { margin: 12px 0 2px; font-size: .82em; color: var(--muted); }
+.bdd-dl dd { margin: 0; }
+
+/* ── ⑤ 小物 ─────────────────────────────────────────────────────────────*/
+h2,h3,h4 { line-height: 1.35; margin: 14px 0 6px; }
+h2 { font-size: 1.05em; } h3,h4 { font-size: 1em; }
+ul, ol { margin: 4px 0; padding-left: 20px; } li { margin: 2px 0; }
+del { color: var(--muted); }
+/* チェックボックス＝絵文字より大きく・色を付ける */
+.cb { display: inline-block; font-size: 1.25em; line-height: 1; vertical-align: -1px; }
+.cb.todo { color: var(--cbtodo); }
+.cb.done { color: var(--cbdone); }
+code { background: var(--zebra); border: 1px solid var(--line-soft); padding: .1em .4em; border-radius: var(--r);
+       font-size: 85%; }
+pre { background: var(--card-head); border: 1px solid var(--line); padding: 14px; border-radius: var(--r);
+      overflow-x: auto; position: relative; }
+pre code { background: none; border: 0; padding: 0; }
+.copy-btn { position: absolute; top: 8px; right: 8px; font-size: 11px; font-weight: 700;
+            padding: 5px 10px; border-radius: var(--r); border: 1px solid var(--line); background: var(--card);
+            color: var(--link); cursor: pointer; box-shadow: var(--sh-sm); }
+.copy-btn:hover { background: var(--hover); } .copy-btn:active { transform: translateY(1px); }
+blockquote { margin: 8px 0; padding: 6px 14px; border-left: 3px solid var(--line); color: var(--muted);
+             background: var(--zebra); border-radius: 0 var(--r) var(--r) 0; }
+img { max-width: 100%; height: auto; }
+a { color: var(--link); }
+footer { max-width: var(--content); margin: 0 auto; padding: 8px 14px 40px; color: var(--muted); font-size: 12px; }
+/* ★表の文字に重なって読めなくなるので小さく・半透明に（2026-07-30 実機確認）*/
+.totop { position: fixed; right: 12px; bottom: 12px; background: var(--brand); color: #fff; text-decoration: none;
+         border-radius: var(--pill); padding: 9px 14px; font-size: 12px; font-weight: 600;
+         box-shadow: var(--sh); opacity: .82; }
+.totop:hover, .totop:active { opacity: 1; background: var(--brand-dark); }
+
+/* ── ダークモード（Bootstrap 5.3 の dark トークンに寄せる）──────────────*/
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#0f1216; --card:#171b21; --card-head:#1c2128; --fg:#e6edf3; --muted:#9aa4ae;
+          --line:#2b323b; --line-soft:#242a32; --line-strong:#3a424c;
+          --brand:#2ea043; --brand-dark:#238636; --chip:#12291d; --chipfg:#5fd07d;
+          --link:#6ea8fe;
+          --side-bg:#0b0f13; --side-fg:#c7d3cb; --side-line:#ffffff14;
+          --thbg:#1f262e; --thfg:#adbac7; --tline:#262d35; --zebra:#ffffff06; --hover:#ffffff0f;
+          --row-food:#12291d; --row-orn:#1b1f25;
+          --warm-bg:#4a3505; --warm-fg:#ffd97d;
+          --cbtodo:#6e7781; --cbdone:#3fb950;
+          --sh-sm:0 1px 2px #0006; --sh:0 6px 16px #0009; }
+  details.acc.sec > summary:hover { background: #222831; }
+  .pmbok-signal .ps-warn { background: #4a1418; color: #ff9b9b; }
+  .sum .k.care { color: var(--warm-fg); background: var(--warm-bg); }
+  .menu-btn:hover, .menu-btn:active, .menu-btn[aria-expanded="true"] { background: #fff; color: #0f1216; }
+  .tw { background:
+        linear-gradient(to left, var(--card), transparent) right / 20px 100% no-repeat,
+        linear-gradient(to left, #00000059, transparent) right / 10px 100% no-repeat,
+        var(--card); }
+}
+
+/* ── ⑥ report.html（現況報告）専用 ― 余白の多い読み物レイアウト ────────────
+   アコーディオン UI を使わないページなので、行間・字間・節間を広く取り、
+   1カラム・約41remに絞って上から読ませる。ダッシュボード側の見た目には触れない。 */
+body.p-report { font-size: 17px; background: var(--card); }
+body.p-report main { max-width: 41rem; margin: 0 auto; padding: 1.5rem 1.4rem 7rem; }
+body.p-report .prose h1 { font-size: clamp(2rem, 7vw, 3rem); font-weight: 700;
+  letter-spacing: -0.02em; line-height: 1.2; text-align: center; margin: 3.5rem 0 2.5rem; }
+body.p-report .prose h2 { font-size: clamp(1.45rem, 4.5vw, 1.9rem); font-weight: 700;
+  letter-spacing: -0.01em; line-height: 1.35; margin: 4.5rem 0 1.2rem; border: none; }
+body.p-report .prose p { line-height: 2.0; margin: 1.2rem 0; }
+body.p-report .prose li { line-height: 1.9; margin: .5rem 0; }
+body.p-report .prose ol, body.p-report .prose ul { padding-left: 1.4rem; }
+body.p-report .prose blockquote { border: none; background: none; padding: 0 .5rem; margin: 2.5rem 0;
+  color: var(--muted); font-size: 1.12em; line-height: 2.0; text-align: left; }
+body.p-report .prose table { font-size: .95em; }
+/* 報告の表は2列（なに／いま・時期／なにが起きたか）＝wrap_tables の一律 min-width:560px だと
+   スマホ幅で最初の表（いまの数字）が横スクロールになる〔#142・shot で実測 親341/表560〕。
+   読み物ページの2列表は親幅に収めて折り返させる（inline style に勝つため !important）。 */
+body.p-report .prose table.tbl { min-width: 0 !important; width: 100%; table-layout: fixed; }
+body.p-report .prose table.tbl td:first-child, body.p-report .prose table.tbl th:first-child { width: 52%; }
+body.p-report .prose table.tbl td, body.p-report .prose table.tbl th { white-space: normal; overflow-wrap: anywhere; }
+body.p-report .prose .tw { margin: 2rem 0; }
+body.p-report header.top { position: static; box-shadow: none; background: var(--card);
+  border-bottom: 1px solid var(--line); }
+body.p-report header.top .title { color: var(--fg); }
+body.p-report footer { margin-top: 4rem; }
+</style></head><body class='p-kiwi'><header class='top'><div class='bar'><div class='title'>🥝 キウイ棚 ― 設計と施工 <a class='siteurl' href='https://uminomae.github.io/garden/kazokuyo.html'>https://uminomae.github.io/garden/kazokuyo.html</a></div><button type='button' class='menu-btn' aria-expanded='false' aria-controls='site-menu'>☰ メニュー</button></div><nav class='gnav' aria-label='ページ'><a href='kazokuyo.html'>🌱 ダッシュボード</a><a href='gantt.html'>🗓 作付けガント</a><a href='notes.html'>📖 手順と判断</a><a href='items.html'>📇 品目別</a><a href='report.html'>🌿 現況報告</a><span class='gsep' aria-hidden='true'>その他</span><a href='kiwi.html' aria-current='page'>🥝 キウイ棚</a><a href='kazokuyo.html#sec-llm-guide'>🤖 AI 再現ガイド</a><a href='https://uminomae.github.io/hatake-note/' target='_blank' rel='noopener noreferrer'>📊 進め方の点検（PM向け） ↗</a></nav></header><div id='site-menu' class='drawer' hidden><div class='drawer-backdrop'></div><div class='drawer-panel' role='dialog' aria-modal='true' aria-label='メニュー'><div class='drawer-head'><span>メニュー</span><button type='button' class='drawer-close' aria-label='閉じる'>✕ 閉じる</button></div><h2>ページ</h2><ul><li><a href='kazokuyo.html'>🌱 ダッシュボード</a></li><li><a href='gantt.html'>🗓 作付けガント</a></li><li><a href='notes.html'>📖 手順と判断</a></li><li><a href='items.html'>📇 品目別</a></li><li><a href='report.html'>🌿 現況報告</a></li></ul><h3>その他</h3><ul><li><a href='kiwi.html' aria-current='page'>🥝 キウイ棚</a></li><li><a href='kazokuyo.html#sec-llm-guide'>🤖 AI 再現ガイド</a></li><li><a href='https://uminomae.github.io/hatake-note/' target='_blank' rel='noopener noreferrer'>📊 進め方の点検（PM向け） ↗</a></li></ul><h2>このページ</h2><ul class='dsec'><li><a href='#sec-kiwi'>🥝 キウイ棚 ― 設計と施工</a></li></ul></div></div><main><details class='acc sec' id='sec-kiwi' open><summary>🥝 キウイ棚 ― 設計と施工</summary><div class='acc-body'><details class='acc l2'><summary>型 ― 棚（パーゴラ）／T字バー／垣根</summary><div class='acc-body'><p><strong>前提は「家庭菜園・大量の収穫は望まない・省スペース」</strong>。
+⇒ 密植の指針 16㎡/樹 は「穫るための面」で、数十果でよいなら 5〜6㎡（主枝は片側1.25〜1.5m）まで縮められる。</p>
+<div class="tw"><table class="tbl f1 f2 f4 f5" style="min-width:650px">
+<thead>
+<tr>
+<th>型</th>
+<th>差し渡し</th>
+<th>高さ</th>
+<th>柱</th>
+<th>向く場面</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>垣根</strong><br>（縦面に一文字）</td>
+<td><strong>幅0.5mの帯</strong></td>
+<td>1.8m</td>
+<td><strong>2本</strong><br>（既存の面に添わせれば0）</td>
+<td><strong>潰れる面が最小</strong>。⚠️ヘイワードの標準形ではない（枝が垂れて混み合う）</td>
+</tr>
+<tr>
+<td><strong>T字バー</strong><br>（推し）</td>
+<td><strong>幅2.0〜2.5m × 主枝方向3m</strong></td>
+<td><strong>1.8m</strong></td>
+<td><strong>2本</strong></td>
+<td><strong>少量・省スペースの本命</strong>。帯なので足元の影が動く</td>
+</tr>
+<tr>
+<td><strong>棚</strong><br>（パーゴラ）</td>
+<td><strong>4m × 4m ＝ 16㎡/樹</strong>（密植の指針。慣行30㎡/樹）</td>
+<td>2m前後</td>
+<td>4〜6本</td>
+<td><strong>四方に広げられる面がある</strong>とき</td>
+</tr>
+</tbody>
+</table></div>
+<p>⚠️<strong>面を縮めても手間は減らない＝むしろ増える</strong>。ヘイワードの樹勢は棚の広さで縮まないので、
+狭いほど毎年切り落とす量が増える。省スペースで買えるのは面であって、作業量ではない。</p>
+<p>⚠️<strong>いちばん効く省スペースは「棚を小さくすること」ではなく「畝の上から外すこと」</strong>。棚下は野菜が作れないので、畝に載せれば潰れる面がそのまま消え、通路や畝の外へ張り出せば0で済む。
+⇒ 問い②「どこまで張り出すか」は、省スペース優先だと答えが逆転する（張り出したほうが省スペース）。</p>
+<p><strong>南東1〜3 の使える面は 南北3m（畝3本）× 東西2m（畝長）＋東への張り出し</strong>。
+⇒ 主枝は東西（畝に沿う向き）に流すのが素直。株から西へ2m（畝の中）＋東へ2m（畝の外）で主枝4m が成立する。
+⚠️南北に流すと 南東4 を食う（株が南端の南東3 に居るため、株を中心にすると南へ2m 出る）。
+⇒ 東へ2m 出せるかどうかが、主枝が完成するかを決める → <a href="kazokuyo.html#ai-questions" target="_blank" rel="noopener">問い</a>。</p></div></details><details class='acc l2'><summary>柱をどこに立てるか ― 株を中心にした置き方</summary><div class='acc-body'><ul>
+<li><strong>柱は株の真上ではなく、主枝の両端に来るように立てる</strong>＝株から主枝方向へ ±1.75〜2.0m の2本が最小構成。
+株の位置にもう1本立てると、それが主幹の登り道になる（仮支柱をそのまま本柱にできる）。</li>
+<li><strong>棚にするなら 株を中心に 東西4m × 南北3m の長方形</strong>＝四隅に4本＋長辺の中央に1本ずつ。
+柱の間隔は4m まで（それ以上飛ばすと水平材がたわむ）。</li>
+<li><strong>オス株（南東1 東端）は、この長方形の北辺に乗る</strong>＝そこに柱を1本立てて、オスをその柱に登らせる
+（授粉樹は棚面を使わず柱に添わせる＝下の「オスの仕立て」）。位置と役割がちょうど噛み合う。</li>
+<li><strong>棚線は主枝と直交する向きに40cm間隔</strong>（＝側枝を受ける向き。4m×4m の区画で9本）。φ3mm 程度。</li>
+<li><strong>今すぐ要るのは垂直な支柱1本だけ</strong>＝株の真横に、棚面の高さまで届くもの。
+主幹をまっすぐ上げるための道で、これが短いと主幹はそこで巻きついて止まる。</li>
+</ul>
+<div class="tw"><table class="tbl f2 f3" style="min-width:560px">
+<thead>
+<tr>
+<th>項目</th>
+<th>決め方・数値</th>
+<th>状態</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>棚面の高さ</strong></td>
+<td><strong>1.8m に確定</strong>〔本人 2026-08-20「1.8mにしよう」〕＝一次情報と同値（タキイ T字バー1.8m・福井県 地上2.1m はさらに上）。⚠️旧値1.6m（08-13・150cm+10cm）は到達しか見ておらず、棚下の頭上クリアランス（作業は棚下に入って上を向いてやる）が入っていなかった。150cm 側に残る不利は棚面での結束が頭上になることだけ＝収穫・摘蕾は垂れ下がる果実なので棚面より下</td>
+<td><strong>✅確定</strong> → <a href="notes.html#sec-decisions" target="_blank" rel="noopener">採否</a></td>
+</tr>
+<tr>
+<td><strong>主枝の向き</strong></td>
+<td><strong>東西（畝に沿う）を推す</strong>＝南北は南東4 を食う</td>
+<td><strong>未決</strong>→ <a href="kazokuyo.html#ai-questions" target="_blank" rel="noopener">問い</a></td>
+</tr>
+<tr>
+<td><strong>差し渡し</strong></td>
+<td><strong>雌雄は約2.0m 離れている</strong>（畝2ピッチ）＝幅1.5mでは片方が棚の外。畝の面積には縛られない（柱を畝の外に立てて張り出せる）</td>
+<td><strong>未決</strong>→ <a href="kazokuyo.html#ai-questions" target="_blank" rel="noopener">問い</a></td>
+</tr>
+<tr>
+<td><strong>柱</strong></td>
+<td><strong>木製なら地際で腐る</strong>＝束石を深さ40cm 据えて載せる。単管なら Φ48.6mm。穴は45cm 掘って砕石で40cm に揃える</td>
+<td>選択待ち</td>
+</tr>
+<tr>
+<td><strong>ぐらつき止め</strong></td>
+<td><strong>端部に斜めの補強支柱（筋交い）を必ず入れる</strong>。束石に載せただけの門型は横に倒れる。やませ＝強風地</td>
+<td>必須</td>
+</tr>
+<tr>
+<td><strong>荷重</strong></td>
+<td><strong>小さい棚（5〜6㎡）でも 枝葉＋果実＋雨で 30〜50kg</strong>＋風の横力。⚠️笹は不可 → 下の「材」</td>
+<td>前提</td>
+</tr>
+<tr>
+<td><strong>地面</strong></td>
+<td><strong>棚の範囲の高低差を20cm 以内にならしてから柱を立てる</strong></td>
+<td>施工前</td>
+</tr>
+</tbody>
+</table></div></div></details><details class='acc l2'><summary>材 ― 何を笹で、何を本物にするか</summary><div class='acc-body'><p><a id="kiwi-material"></a></p>
+<p><strong>分け方は「動かせるか」</strong>＝柱の位置と高さは一度決めたら動かせない＝本物／替えが利くものは笹（自給）。</p>
+<div class="tw"><table class="tbl f1 f2 f3" style="min-width:560px">
+<thead>
+<tr>
+<th>部位</th>
+<th>材</th>
+<th>理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>柱</strong>（2本）</td>
+<td><strong>林のスギ間伐材＋束石</strong>／単管Φ48.6mm</td>
+<td><strong>自給が先</strong>。⚠️杉は皮を剥いて乾かす・地際で腐るので直挿し不可。単管より短命＝10年で一度建て替える前提</td>
+</tr>
+<tr>
+<td><strong>水平材・T字の腕</strong></td>
+<td><strong>スギ間伐材</strong></td>
+<td>柱と同時に建てる</td>
+</tr>
+<tr>
+<td><strong>棚線</strong></td>
+<td><strong>φ3mm・40cm間隔</strong></td>
+<td>買う（1月に数量を出す）</td>
+</tr>
+<tr>
+<td><strong>仮の垂直支柱</strong>（今年要る）</td>
+<td><strong>✅笹でよい</strong></td>
+<td><strong>株の真横に棚面の高さまで継ぐだけ</strong>＝毎年替えられる → <a href="kazokuyo.html#sec-todo" target="_blank" rel="noopener">todo</a></td>
+</tr>
+<tr>
+<td><strong>足元のレール・仮の受け</strong></td>
+<td><strong>✅笹でよい</strong></td>
+<td>消耗品</td>
+</tr>
+</tbody>
+</table></div>
+<p>⚠️<strong>笹で棚を作らない</strong>〔2026-08-07 判定〕——理由は強度ではなく「耐用年数」と「巻きつき」。</p>
+<ul>
+<li><strong>上から押す分だけなら、実は成立しうる</strong>。足りないのは横：受圧面5㎡・風速25m/s・力係数0.3 で約57kg
+→ 柱1本の根元に約560N·m に対し、φ20mm・肉厚2.5mm の笹の曲げ耐力は約48N·m＝1桁以上足りない
+（鉛直は座屈で数十kg／柱4本なら1本8〜13kg＝ぎりぎり成立する側）。やませ＝強風地で、帆になるのは葉が茂る夏。
+※E=12GPa・曲げ強度80MPa は一般的な竹材の値の当てはめで、笹そのものの実測ではない。</li>
+<li><strong>耐用年数が合っていない</strong>。笹は地際で1〜2年で脆くなる消耗品に対し、
+棚は10年以上立ち続ける必要がある（一文字の主枝は棚面の高さで作ったら動かせない）。
+4年目に折れたとき失うのは棚ではなく樹形。</li>
+<li><strong>巻きつく</strong>。キウイは針金にも竹にも巻きつく（南東3 のメスが1.5mで巻きついて停滞中）。
+巻きつかれた笹は抜けず、折れても樹の中に残る。</li>
+<li>⚠️<strong>「竹の棚」の実績は孟宗竹・真竹（径5〜10cm・肉厚1cm）の話</strong>で、林から採れる笹とは別の材
+（実績があると言うときは"何の"実績かを確かめる＝<a href="notes.html#sec-decisions" target="_blank" rel="noopener">トンネル骨組みと同型</a>）。</li>
+</ul></div></details><details class='acc l2'><summary>施工手順 ― 杉の角材＋束石で自立させる</summary><div class='acc-body'><p><a id="kiwi-build"></a></p>
+<blockquote>
+<p><strong>材は杉の角材・足元は束石（平板）</strong>。下敷きは福井県の簡易棚（単管Φ48.6mm＋クランプ・下の一次情報）
+だが、足元を「埋める」から「載せる」に変えた時点で構造が別物になる（→ 下の「なぜ4本足になるか」）。</p>
+</blockquote><details class='acc l3'><summary>かたち ― 上から見た図</summary><div class='acc-body'><p><strong>四隅に柱4本。上端で長方形を閉じ、中央に中桁を1本通す</strong>。<strong>一文字の主枝はこの中桁の上に乗り、
+側枝が左右へ出て棚線を横切る。棚線は主枝と平行に40cm間隔</strong>。</p>
+<div class="figure"><svg viewBox="0 0 640 400" role="img" aria-label="上から見た図。3.0m×2.0mの長方形の四隅に柱、中央に中桁、棚線4本、主枝と側枝" style="width:100%;height:auto;color:inherit">
+  <g fill="none" stroke="currentColor" stroke-opacity="0.45" stroke-width="1">
+    <line x1="48" y1="70" x2="48" y2="44"/><path d="M43 52 L48 44 L53 52"/>
+  </g>
+  <text x="41" y="88" fill="currentColor" font-size="14" opacity="0.6">N</text>
+  <g fill="none" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.4" stroke-dasharray="7 4">
+    <line x1="120" y1="110" x2="520" y2="110"/><line x1="120" y1="150" x2="520" y2="150"/>
+    <line x1="120" y1="230" x2="520" y2="230"/><line x1="120" y1="270" x2="520" y2="270"/>
+  </g>
+  <rect x="120" y="90" width="400" height="200" fill="none" stroke="currentColor" stroke-width="2.5"/>
+  <line x1="120" y1="190" x2="520" y2="190" stroke="currentColor" stroke-width="2.5"/>
+  <g fill="none" stroke="#c2703f" stroke-width="1.6" stroke-linecap="round">
+    <line x1="230" y1="190" x2="230" y2="122"/><line x1="230" y1="190" x2="230" y2="260"/>
+    <line x1="275" y1="190" x2="275" y2="134"/><line x1="275" y1="190" x2="275" y2="248"/>
+    <line x1="365" y1="190" x2="365" y2="128"/><line x1="365" y1="190" x2="365" y2="256"/>
+    <line x1="410" y1="190" x2="410" y2="142"/><line x1="410" y1="190" x2="410" y2="244"/>
+  </g>
+  <line x1="185" y1="190" x2="455" y2="190" stroke="#c2703f" stroke-width="3.5" stroke-linecap="round"/>
+  <circle cx="320" cy="190" r="8" fill="#c2703f"/>
+  <g fill="currentColor" fill-opacity="0.18" stroke="currentColor" stroke-width="2">
+    <rect x="111" y="81" width="18" height="18"/><rect x="511" y="81" width="18" height="18"/>
+    <rect x="111" y="281" width="18" height="18"/><rect x="511" y="281" width="18" height="18"/>
+  </g>
+  <g fill="none" stroke="currentColor" stroke-opacity="0.45" stroke-width="1">
+    <line x1="120" y1="330" x2="520" y2="330"/>
+    <path d="M126 326 L120 330 L126 334 M514 326 L520 330 L514 334"/>
+    <line x1="120" y1="300" x2="120" y2="336"/><line x1="520" y1="300" x2="520" y2="336"/>
+    <line x1="72" y1="90" x2="72" y2="290"/>
+    <path d="M68 96 L72 90 L76 96 M68 284 L72 290 L76 284"/>
+    <line x1="66" y1="90" x2="126" y2="90"/><line x1="66" y1="290" x2="126" y2="290"/>
+  </g>
+  <g fill="currentColor" font-size="14" opacity="0.7"><text x="296" y="352">3.0 m</text><text x="16" y="196">2.0 m</text></g>
+  <g fill="none" stroke="currentColor" stroke-opacity="0.3" stroke-width="1">
+    <line x1="530" y1="90" x2="580" y2="62"/><line x1="530" y1="150" x2="580" y2="128"/>
+    <line x1="530" y1="190" x2="580" y2="190"/><line x1="129" y1="90" x2="150" y2="52"/>
+    <line x1="330" y1="190" x2="360" y2="330"/>
+  </g>
+  <g fill="currentColor" font-size="15">
+    <text x="584" y="58">梁</text><text x="584" y="132">棚線</text><text x="584" y="196">中桁</text><text x="140" y="46">柱</text>
+    <text x="352" y="348" fill="#c2703f">主枝（一文字）</text>
+  </g>
+</svg></div></div></details><details class='acc l3'><summary>なぜ2本足では立たないか ― 束石は「ピン」</summary><div class='acc-body'><div class="tw"><table class="tbl f2 f3" style="min-width:560px">
+<thead>
+<tr>
+<th></th>
+<th>単管を40cm埋める</th>
+<th>束石に載せる</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>柱の根元</td>
+<td><strong>固定端</strong>＝モーメントを持てる</td>
+<td><strong>ピン</strong>＝モーメントをまったく持てない</td>
+</tr>
+<tr>
+<td>必要な足の数</td>
+<td><strong>2本で成立</strong></td>
+<td><strong>2本では成立しない</strong></td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>束石は「重り」と「腐り止め」であって「固定」ではない</strong>。<strong>沓石1個（約30kg）が根元で持てる復元モーメントは
+自重×半幅＝約27N·mで、下の転倒モーメント600N·m に対して2桁足りない。⇒ 柱脚で立たせようとしない</strong>。</p>
+<p><strong>倒れるのは南北</strong>（腕木の向き）——柱2本を結ぶ線は東西に走るので、その線まわりの復元モーメントは腕がゼロ＝復元ゼロ。
+東西方向は柱2本＋桁で面を作れるが、南北方向には面が無い。</p>
+<div class="tw"><table class="tbl f1 f2 f3" style="min-width:560px">
+<thead>
+<tr>
+<th></th>
+<th>力</th>
+<th>計算</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>転倒</strong>（風・南北から）</td>
+<td><strong>約600 N·m</strong>（高さ1.8mで計算＝棚面1.8m 確定と一致するので、仮値でなく実値）</td>
+<td>速度圧0.6V²＝375N/㎡（25m/s）×<strong>垂れ下がる葉の投影 3.0×0.6＝1.8㎡</strong>×力係数0.5＝337N、高さ1.8m</td>
+</tr>
+<tr>
+<td><strong>復元</strong>（4本足・足幅2.0m）</td>
+<td><strong>約2,000 N·m</strong></td>
+<td>骨組の杉45kg＋樹40kg＋束石4個120kg＝<strong>205kg</strong>×腕1.0m（足幅の半分）</td>
+</tr>
+<tr>
+<td><strong>復元</strong>（2本足）</td>
+<td><strong>0</strong></td>
+<td><strong>腕がゼロ</strong></td>
+</tr>
+</tbody>
+</table></div>
+<p>⇒ <strong>4本足（平面で 2.0m×3.0m の長方形）にして、上で三角（方杖）を作り、剛な箱にする</strong>。倒れは「箱の自重×足の幅」で止める。
+仕立ては一文字のまま・差し渡しも6㎡のまま＝変わるのは足の数だけ（省スペースは損なわない）。</p>
+<div class="figure"><svg viewBox="0 0 640 300" role="img" aria-label="2本足と4本足の転倒の比較。2本足は復元の腕がゼロ、4本足は腕1.0m" style="width:100%;height:auto;color:inherit">
+  <g fill="none" stroke="currentColor" stroke-opacity="0.35" stroke-width="1.2">
+    <line x1="40" y1="230" x2="270" y2="230"/><line x1="370" y1="230" x2="620" y2="230"/>
+    <line x1="320" y1="40" x2="320" y2="280" stroke-dasharray="4 6"/>
+  </g>
+  <g fill="none" stroke="currentColor" stroke-width="2.5">
+    <line x1="155" y1="230" x2="155" y2="90"/><line x1="105" y1="90" x2="205" y2="90"/>
+    <line x1="440" y1="230" x2="440" y2="90"/><line x1="560" y1="230" x2="560" y2="90"/>
+    <line x1="425" y1="90" x2="575" y2="90"/><path d="M440 130 L478 90 M560 130 L522 90"/>
+  </g>
+  <g fill="currentColor" fill-opacity="0.18" stroke="currentColor" stroke-width="2">
+    <rect x="141" y="230" width="28" height="18"/>
+    <rect x="426" y="230" width="28" height="18"/><rect x="546" y="230" width="28" height="18"/>
+  </g>
+  <g fill="none" stroke="#b4503a" stroke-width="2.2">
+    <line x1="52" y1="120" x2="120" y2="120"/><path d="M112 113 L120 120 L112 127"/>
+    <line x1="368" y1="120" x2="418" y2="120"/><path d="M410 113 L418 120 L410 127"/>
+    <path d="M125 262 a30 30 0 0 0 52 15" stroke-dasharray="5 4"/>
+  </g>
+  <g fill="none" stroke="currentColor" stroke-opacity="0.45" stroke-width="1">
+    <line x1="440" y1="270" x2="560" y2="270"/>
+    <path d="M446 266 L440 270 L446 274 M554 266 L560 270 L554 274"/>
+    <line x1="440" y1="250" x2="440" y2="276"/><line x1="560" y1="250" x2="560" y2="276"/>
+  </g>
+  <g fill="currentColor" font-size="15">
+    <text x="116" y="66">2本足</text><text x="464" y="66">4本足</text>
+    <text x="484" y="122" opacity="0.7" font-size="14">方杖</text>
+  </g>
+  <g fill="currentColor" font-size="14" opacity="0.7"><text x="94" y="292">腕 = 0</text><text x="460" y="292">腕 1.0 m</text></g>
+  <text x="42" y="108" fill="#b4503a" font-size="14" font-weight="bold">風</text>
+</svg></div>
+<p><strong>南北から風が当たったとき</strong>。2本足は復元の腕がゼロ＝風の強さによらず倒れる側に回る。</p>
+<p><a id="kiwi-parts"></a></p></div></details><details class='acc l3'><summary>部材（杉・90mm角＝三寸角）</summary><div class='acc-body'><div class="tw"><table class="tbl f3 f5" style="min-width:650px">
+<thead>
+<tr>
+<th>部材</th>
+<th>断面</th>
+<th>長さ</th>
+<th>数</th>
+<th>役割</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>柱</strong></td>
+<td>90角</td>
+<td><strong>約1.9m</strong>（棚面1.8m＋束石の逃げ）</td>
+<td><strong>4</strong></td>
+<td>四隅</td>
+</tr>
+<tr>
+<td><strong>桁</strong>（東西）</td>
+<td>90角</td>
+<td>3.0m</td>
+<td>2</td>
+<td>長辺</td>
+</tr>
+<tr>
+<td><strong>梁</strong>（南北）</td>
+<td>90角</td>
+<td>2.0m</td>
+<td>2</td>
+<td>短辺</td>
+</tr>
+<tr>
+<td><strong>中桁</strong>（東西）</td>
+<td>90角</td>
+<td>3.0m</td>
+<td><strong>1</strong></td>
+<td><strong>一文字の主枝を載せる材</strong></td>
+</tr>
+<tr>
+<td><strong>方杖</strong></td>
+<td>45×90</td>
+<td>600mm（45°）</td>
+<td><strong>8</strong></td>
+<td><strong>各柱の頭に2方向＝これが自立の本体</strong></td>
+</tr>
+<tr>
+<td><strong>棚線</strong></td>
+<td>φ3mm</td>
+<td>3.0m</td>
+<td>4〜6</td>
+<td><strong>中桁と平行に40cm間隔</strong></td>
+</tr>
+<tr>
+<td><strong>束石</strong></td>
+<td>羽子板付き沓石</td>
+<td>—</td>
+<td>4</td>
+<td><strong>柱をボルトで留められるもの</strong>（平板は金物を打つ手段が要る）</td>
+</tr>
+<tr>
+<td><strong>砕石</strong></td>
+<td>—</td>
+<td>—</td>
+<td>適量</td>
+<td><strong>凍上対策</strong>（下）</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>断面は90角で余る</strong>。座屈耐力は約11t（L=1.8m・E=7GPa＝棚面1.8m 確定と一致）に対し必要は1本50kg程度＝2桁の余裕。
+桁3.0m に50kg 等分布でも 応力1.5MPa（杉の許容7〜8MPa）・たわみ約5mm。
+⇒ 効くのは断面ではなく「接合」と「足元」（下の2つ）。</p></div></details><details class='acc l3'><summary>接合 ― ステンレスで留める</summary><div class='acc-body'><ul>
+<li>⚠️<strong>ビス・ボルトはステンレス必須</strong>。杉のタンニンが鉄を腐食させ、木も黒く汚れる。</li>
+<li><strong>方杖は M10ボルト1本＋ビス</strong>（ボルト1本だけだと回るので、回り止めにビスを併用）。</li>
+<li><strong>柱頭は 短ざく金物か羽子板ボルト</strong>。すべてねじ・ボルト（ はんだ不使用）。</li>
+<li><strong>柱脚は羽子板付き沓石にボルト留め</strong>＝モーメントは期待しない・ずれ止めとして効かせる。</li>
+</ul>
+<div class="figure"><svg viewBox="0 0 640 330" role="img" aria-label="横から見た図。柱2本・桁・方杖・沓石・砕石・高さ1.8m・柱間3.0m" style="width:100%;height:auto;color:inherit">
+  <line x1="40" y1="248" x2="612" y2="248" stroke="currentColor" stroke-opacity="0.35" stroke-width="1.2"/>
+  <g fill="currentColor" fill-opacity="0.08" stroke="currentColor" stroke-opacity="0.4" stroke-width="1">
+    <rect x="128" y="266" width="96" height="46"/><rect x="424" y="266" width="96" height="46"/>
+  </g>
+  <g fill="currentColor" fill-opacity="0.18" stroke="currentColor" stroke-width="2">
+    <path d="M148 236 h56 l10 30 h-76 z"/><path d="M444 236 h56 l10 30 h-76 z"/>
+  </g>
+  <g fill="none" stroke="currentColor" stroke-width="2.5">
+    <rect x="164" y="72" width="24" height="164"/><rect x="460" y="72" width="24" height="164"/>
+    <rect x="140" y="54" width="368" height="20"/>
+    <path d="M164 132 L110 74 M188 132 L246 74 M460 132 L402 74 M484 132 L538 74"/>
+  </g>
+  <g fill="currentColor" opacity="0.6"><circle cx="176" cy="103" r="4"/><circle cx="472" cy="103" r="4"/></g>
+  <g fill="none" stroke="currentColor" stroke-opacity="0.45" stroke-width="1">
+    <line x1="86" y1="64" x2="86" y2="248"/><path d="M82 70 L86 64 L90 70 M82 242 L86 248 L90 242"/>
+    <line x1="176" y1="290" x2="472" y2="290"/><path d="M182 286 L176 290 L182 294 M466 286 L472 290 L466 294"/>
+    <line x1="252" y1="266" x2="252" y2="312"/><path d="M248 272 L252 266 L256 272 M248 306 L252 312 L256 306"/>
+  </g>
+  <g fill="currentColor" font-size="14" opacity="0.7">
+    <text x="26" y="162">1.8 m</text><text x="288" y="308">3.0 m</text><text x="264" y="296">砕石 30〜40 cm</text>
+  </g>
+  <g fill="none" stroke="currentColor" stroke-opacity="0.3" stroke-width="1">
+    <line x1="246" y1="80" x2="300" y2="112"/><line x1="214" y1="240" x2="300" y2="212"/>
+  </g>
+  <g fill="currentColor" font-size="15">
+    <text x="304" y="118">方杖 600 mm（45°）</text><text x="304" y="208">沓石の天端は地面から 5〜10 cm 上げる</text>
+  </g>
+</svg></div>
+<p><strong>横から見た図（東西方向）</strong>。方杖8本のうち、この面に見えるのは4本。残る4本は南北の面に同じように入る。</p></div></details><details class='acc l3'><summary>足元 ― 腐りと凍上</summary><div class='acc-body'><ul>
+<li><strong>杉は地際で腐る</strong>＝沓石の天端を地面から5〜10cm 上げる。木口（切り口）から水を吸うので木口を塗る、
+柱頭は勾配をつけるかキャップを載せる。</li>
+<li>⚠️<strong>凍上</strong>。沓石を地面に直に置くと持ち上がり、戻るときに傾く。4本が別々に動くとフレームごと歪む。
+⇒ 穴を掘って砕石を30〜40cm 敷き、突き固めてから沓石を据える（水を抜いて凍らせない）。
+県内には条例の凍結深度指定が無く、内陸の予報点平野部で0.4m以上・県北や山間で0.6〜0.8m が実務の目安
+（当地の値は未確認＝町の上下水道事業所に確認する）。</li>
+<li><strong>防腐は薬剤を使わない</strong>（有機・無農薬）＝焼杉（表面を炭化させる）が薬剤ゼロで効く／柿渋・ベンガラ＋亜麻仁油。</li>
+<li>⚠️<strong>杉心材の耐朽性は中程度・辺材は低い</strong>＝単管より短命で、10年で一度建て替える前提。</li>
+</ul></div></details><details class='acc l3'><summary>手順</summary><div class='acc-body'><ol>
+<li><strong>材を用意する</strong>（11〜1月）＝林のスギは「細い若木＝杭・支柱」で、角材にするには製材が要る（→<a href="kazokuyo.html#b-hayashi" target="_blank" rel="noopener">林</a>）。
+丸太のまま皮を剥いて使うか、角材を買うかを決める。皮剥き・乾燥・焼き（焼杉）は冬のうちに。</li>
+<li><strong>位置決めと高低差</strong>（2〜3月・凍結が緩んでから）＝四隅に杭。範囲の高低差を20cm以内にならす。</li>
+<li><strong>足元</strong>＝穴を掘って砕石を30〜40cm 突き固め、沓石4個を据える。4個の天端を水糸で通す（ここが出れば後は楽）。</li>
+<li><strong>柱を立てる</strong>＝沓石に羽子板でボルト留め。下げ振りで垂直。⚠️この時点ではまだ倒れる＝仮筋交いで留めておく。</li>
+<li><strong>桁・梁・中桁を回して箱にする</strong>＝上端で長方形が閉じた瞬間に、東西と南北の両方に面ができる。</li>
+<li><strong>方杖を8本入れる</strong>＝各柱の頭から2方向へ45°。ここで初めて自立する（仮筋交いを外すのはこの後）。</li>
+<li><strong>棚線</strong>＝中桁と平行に40cm間隔で4〜6本。梁の上を渡し、たるみが出ないよう張線器かターンバックルで締める。</li>
+</ol>
+<p><strong>工具</strong>＝<strong>インパクトドライバ・丸のこ（45°が切れるもの）・水平器・下げ振り・水糸・メジャー・
+スコップとタンパー（砕石の突き固め）・レンチ（M10）。張線器かターンバックル</strong>。</p></div></details><details class='acc l3'><summary>代案 ― 4本足にしないなら</summary><div class='acc-body'><div class="tw"><table class="tbl f1 f2 f3" style="min-width:560px">
+<thead>
+<tr>
+<th>案</th>
+<th>中身</th>
+<th>判定</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>控え柱</strong></td>
+<td><strong>2本足のまま、南北へ斜めの控えを地面まで下ろす</strong>（各自の平板に載せる）</td>
+<td><strong>△ 成立するが、結局 接地点は4〜6に増える</strong>（材も同じくらい要る）</td>
+</tr>
+<tr>
+<td><strong>控え索</strong></td>
+<td>ワイヤー＋地中アンカーで4方向に張る</td>
+<td><strong>✕ 畑では邪魔</strong>（つまずく・草刈りができない）</td>
+</tr>
+<tr>
+<td><strong>既存の面に留める</strong></td>
+<td>壁・柵に片側を緊結する</td>
+<td><strong>🔁 その向きだけ解決する</strong>＝11月の実測で探す対象</td>
+</tr>
+<tr>
+<td><strong>柱を埋める</strong></td>
+<td>束石をやめて杉を直に埋める</td>
+<td><strong>✕ 地際で腐る</strong>＝杉で最もやってはいけない使い方</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>単管でやる場合の材料と単価</strong>（比較用・福井の資材費表＝税抜）</p>
+<div class="tw"><table class="tbl f1 f2" style="min-width:650px">
+<thead>
+<tr>
+<th>部材</th>
+<th>規格</th>
+<th>数</th>
+<th>単価</th>
+<th>小計</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>垂直柱</td>
+<td>Φ48.6×1.8×2.5m</td>
+<td>2</td>
+<td>1,436</td>
+<td>2,872</td>
+</tr>
+<tr>
+<td>腕木・筋交い</td>
+<td>Φ48.6×1.8×2.0m</td>
+<td>4</td>
+<td>1,163</td>
+<td>4,652</td>
+</tr>
+<tr>
+<td>直交／自在クランプ</td>
+<td>Φ48.6用</td>
+<td>4</td>
+<td>180</td>
+<td>720</td>
+</tr>
+<tr>
+<td>単管キャップ</td>
+<td>—</td>
+<td>2</td>
+<td>34</td>
+<td>68</td>
+</tr>
+<tr>
+<td>コンクリートブロック</td>
+<td>390×190×100</td>
+<td>4</td>
+<td>207</td>
+<td>828</td>
+</tr>
+<tr>
+<td>砕石</td>
+<td>20kg</td>
+<td>1</td>
+<td>200</td>
+<td>200</td>
+</tr>
+</tbody>
+</table></div>
+<p>⇒ <strong>単管なら税込 約1万円＋線・モルタルで1.3〜1.5万円</strong>、しかも埋めるので柱2本で済む。
+⚠️テンションクランプは買わない。1個1,436円×27個＝38,772円＝福井の棚では材料費の30%。
+家庭の4〜6本ならターンバックルか、結んで張線器で締めるだけでよい。</p></div></details><details class='acc l3'><summary>段取り（冬〜春）</summary><div class='acc-body'><p><a id="kiwi-schedule"></a></p>
+<div class="tw tw-fit"><table class="tbl cond cond-fit">
+<thead>
+<tr>
+<th>いつ</th>
+<th>やること</th>
+<th class="bd-more-c">詳細</th>
+</tr>
+</thead>
+<tbody>
+<tr><td><strong>11月・落葉後</strong></td><td>棚の範囲を実測する＝東へ何m 出せるか・添わせられる既存の面はあるか</td><td class="bd-more-c"><button type="button" class="bd-more" data-bd="kiwi-when-1" aria-haspopup="dialog">詳細</button></td></tr>
+<tr><td><strong>12月上旬</strong></td><td>棚面の高さ1.8mで柱を切る（<a href="#kiwi-parts">確定済み</a>）</td><td class="bd-more-c"><button type="button" class="bd-more" data-bd="kiwi-when-2" aria-haspopup="dialog">詳細</button></td></tr>
+<tr><td><strong>12月上旬</strong></td><td>主枝の向きと柱4本の位置を決めて杭を打つ</td><td class="bd-more-c"><button type="button" class="bd-more" data-bd="kiwi-when-3" aria-haspopup="dialog">詳細</button></td></tr>
+<tr><td><strong>12月中旬〜2月上旬</strong></td><td>メス・オスの剪定（棚面の高さが決まってから）</td><td class="bd-more-c"><button type="button" class="bd-more" data-bd="kiwi-when-4" aria-haspopup="dialog">詳細</button></td></tr>
+<tr><td><strong>12月〜2月</strong></td><td>幹の防寒（わら巻き等）</td><td class="bd-more-c"><button type="button" class="bd-more" data-bd="kiwi-when-5" aria-haspopup="dialog">詳細</button></td></tr>
+<tr><td><strong>11〜1月</strong></td><td>材の用意＝製材か購入・皮剥き・乾燥・焼杉</td><td class="bd-more-c"><button type="button" class="bd-more" data-bd="kiwi-when-6" aria-haspopup="dialog">詳細</button></td></tr>
+<tr><td><strong>2〜3月</strong></td><td>施工①〜④＝ならす → 砕石＋沓石 → 柱 → 箱と方杖 → 棚線</td><td class="bd-more-c"><button type="button" class="bd-more" data-bd="kiwi-when-7" aria-haspopup="dialog">詳細</button></td></tr>
+<tr><td><strong>4月上旬</strong></td><td>芽かき（1㎡あたり10芽ぐらい）</td><td class="bd-more-c"><button type="button" class="bd-more" data-bd="kiwi-when-8" aria-haspopup="dialog">詳細</button></td></tr>
+<tr><td><strong>5月</strong></td><td>誘引・捻枝</td><td class="bd-more-c"><button type="button" class="bd-more" data-bd="kiwi-when-9" aria-haspopup="dialog">詳細</button></td></tr>
+<tr><td><strong>〜8月下旬</strong></td><td>巻き戻し＋葉15枚残して摘心</td><td class="bd-more-c"><button type="button" class="bd-more" data-bd="kiwi-when-10" aria-haspopup="dialog">詳細</button></td></tr>
+<tr><td><strong>2027年</strong></td><td>花芽が付いても全部摘蕾</td><td class="bd-more-c"><button type="button" class="bd-more" data-bd="kiwi-when-11" aria-haspopup="dialog">詳細</button></td></tr>
+</tbody>
+</table></div><div class="dd-src" id="bdd-kiwi-when-1" data-title="11月・落葉後" data-crumb="手順" data-row="kiwi-when-1" hidden><dl class="bdd-dl"><dt>やること</dt><dd>棚の範囲を実測する＝東へ何m 出せるか・添わせられる既存の面はあるか</dd><dt>条件・注意</dt><dd><strong>省スペースは「小さくする」より「畝の上から外す」が効く</strong>。葉が落ちると枝の実長も同時に取れる</dd></dl></div><div class="dd-src" id="bdd-kiwi-when-2" data-title="12月上旬" data-crumb="手順" data-row="kiwi-when-2" hidden><dl class="bdd-dl"><dt>やること</dt><dd>棚面の高さ1.8mで柱を切る（<a href="#kiwi-parts">確定済み</a>）</dd><dt>条件・注意</dt><dd>主枝は棚面の20cm下＝1.6mで一文字にする</dd></dl></div><div class="dd-src" id="bdd-kiwi-when-3" data-title="12月上旬" data-crumb="手順" data-row="kiwi-when-3" hidden><dl class="bdd-dl"><dt>やること</dt><dd>主枝の向きと柱4本の位置を決めて杭を打つ</dd><dt>条件・注意</dt><dd>東西（畝に沿う）を推す。⚠️南北に流すと南東4 を食う</dd></dl></div><div class="dd-src" id="bdd-kiwi-when-4" data-title="12月中旬〜2月上旬" data-crumb="手順" data-row="kiwi-when-4" hidden><dl class="bdd-dl"><dt>やること</dt><dd>メス・オスの剪定（棚面の高さが決まってから）</dd><dt>条件・注意</dt><dd>上の「メスの伸ばし方」「オスの仕立て」</dd></dl></div><div class="dd-src" id="bdd-kiwi-when-5" data-title="12月〜2月" data-crumb="手順" data-row="kiwi-when-5" hidden><dl class="bdd-dl"><dt>やること</dt><dd>幹の防寒（わら巻き等）</dd><dt>条件・注意</dt><dd>⚠️胴枯れ病は寒害から入り、有効な薬剤が無い</dd></dl></div><div class="dd-src" id="bdd-kiwi-when-6" data-title="11〜1月" data-crumb="手順" data-row="kiwi-when-6" hidden><dl class="bdd-dl"><dt>やること</dt><dd>材の用意＝製材か購入・皮剥き・乾燥・焼杉</dd><dt>条件・注意</dt><dd>数量は上の部材表。<strong>高さが決まってから柱を切る</strong></dd></dl></div><div class="dd-src" id="bdd-kiwi-when-7" data-title="2〜3月" data-crumb="手順" data-row="kiwi-when-7" hidden><dl class="bdd-dl"><dt>やること</dt><dd>施工①〜④＝ならす → 砕石＋沓石 → 柱 → 箱と方杖 → 棚線</dd><dt>条件・注意</dt><dd><strong>萌芽（4月）より前に終える</strong></dd></dl></div><div class="dd-src" id="bdd-kiwi-when-8" data-title="4月上旬" data-crumb="手順" data-row="kiwi-when-8" hidden><dl class="bdd-dl"><dt>やること</dt><dd>芽かき（1㎡あたり10芽ぐらい）</dd><dt>条件・注意</dt><dd>1本の主幹に力を集める年はなおさら絞る</dd></dl></div><div class="dd-src" id="bdd-kiwi-when-9" data-title="5月" data-crumb="手順" data-row="kiwi-when-9" hidden><dl class="bdd-dl"><dt>やること</dt><dd>誘引・捻枝</dd><dt>条件・注意</dt><dd>⚠️立った枝をそのまま水平に引くと折れる＝先に付け根を捻る</dd></dl></div><div class="dd-src" id="bdd-kiwi-when-10" data-title="〜8月下旬" data-crumb="手順" data-row="kiwi-when-10" hidden><dl class="bdd-dl"><dt>やること</dt><dd>巻き戻し＋葉15枚残して摘心</dd><dt>条件・注意</dt><dd>誘引した枝は巻きつく＝早めに巻き戻す</dd></dl></div><div class="dd-src" id="bdd-kiwi-when-11" data-title="2027年" data-crumb="手順" data-row="kiwi-when-11" hidden><dl class="bdd-dl"><dt>やること</dt><dd>花芽が付いても全部摘蕾</dd><dt>条件・注意</dt><dd>着果させると主枝・側枝が伸びない</dd></dl></div></div></details></div></details><details class='acc l2'><summary>メス（ヘイワード）の伸ばし方 ― 年ごと</summary><div class='acc-body'><p><a id="kiwi-female"></a></p>
+<p><strong>形は「主幹1本 → 棚面の高さで左右2本の主枝（一文字）→ 主枝から側枝を30cm間隔 → 側枝に結果母枝」</strong>。</p>
+<div class="tw"><table class="tbl f1 f2" style="min-width:560px">
+<thead>
+<tr>
+<th>年</th>
+<th>やること</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>1年目（棚面まで）</strong></td>
+<td>勢いのある新梢を1〜2本だけ選び、支柱に添わせて棚面まで上げる。巻きつかせない（8の字で結ぶ）。他の芽はかき取る＝1本に力を集める。落葉後、先端を切り返して一文字の腕を作る（総主枝長3.5〜4.0m＝片側1.75〜2.0m）</td>
+</tr>
+<tr>
+<td><strong>2年目（側枝）</strong></td>
+<td>主枝から出た新梢を棚線に誘引して側枝にする。側枝は30cm間隔・1本1.0〜2.0m、他は芽かき。花芽が付いたら全部摘蕾＝着果させない（させると主枝・側枝が伸びない）</td>
+</tr>
+<tr>
+<td><strong>3年目以降</strong></td>
+<td>側枝の上に結果母枝を並べて着果させる。花芽は新梢の基から3〜8節目に付くので、丈夫な結果母枝を揃えるのが仕事</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>2026年のメスは1年目の課題を8月に片づけた</strong>。08-20 に巻きついた先端を巻き戻して葉15枚で摘心し、
+仮支柱は180cm を超えて継いであり、つるも180cm の位置で麻紐で結束済み〔本人 2026-08-20〕
+（旧記述「1.5mで巻きついて停滞」はこの日に解消）。棚面1.8m も同日に確定した。
+⇒ 一文字を作る条件が2つとも揃った＝落葉後、棚面の20cm下＝1.6m で切り返して一文字にする（12月中旬〜2月上旬）。</p>
+<p><strong>どこを結ぶのか ― 結ぶのは「残す側」</strong>〔一次情報 2026-08-20〕</p>
+<ul>
+<li><strong>8の字で結ぶのは、これから主幹になる部分＝いちばん長く残す部分</strong>。捨てる部分だから結ぶのではない。
+1年目の仕事は「勢いのある新梢1〜2本を支柱に添わせて棚面まで伸ばす」で、地際から棚面までのその1本がそのまま主幹になる（福井県）。</li>
+<li><strong>冬に切るのは先端だけ</strong>＝落葉後に先端を切り返し、棚面から20cm ほど低い位置で一文字に整枝して主枝を作る（福井県）。
+つまり冬の切り口より下＝結んである区間は全部残る。</li>
+<li><strong>8の字の理由は「太っても食い込まないため」</strong>＝ひもを茎に掛けて交差させ、支柱側で1回巻いて結ぶ
+（茎↔支柱の間で交差させる・指が1本入る緩さ）。支柱側は締まり、幹側には輪の余裕が残るので、幹が太っても締めつけない（サカタのタネ・全農）。
+⚠️ぐるりと1周（0の字）で巻くと、太った幹にひもが食い込む。</li>
+<li><strong>なぜ巻きつかせないのか</strong>＝キウイは自分で支柱にらせん状に巻きつく。巻きついたまま太ると自分で自分を締めるうえ、
+らせんに曲がった幹は後から真っすぐにできない。若木のうちは1本の枝が真っすぐ伸びるように巻きつかせず誘引し、巻き始めたら摘心する（OATアグリオ）。</li>
+</ul>
+<p><strong>毎年の作業</strong></p>
+<ul>
+<li><strong>4月上旬 芽かき</strong>＝充実した結果枝を揃えるため、勢いの弱い芽と不定芽を落とす。1㎡あたり10芽ぐらい残す。</li>
+<li><strong>5月 誘引・捻枝</strong>＝枝が50cm 以上に伸び葉が10枚ほどになったら棚へ引き寄せる。
+⚠️立った枝をそのまま水平に引くと折れる。先に付け根を「パチッと音がするまで」捻る（捻枝）と、水平に倒しても折れない。</li>
+<li><strong>〜8月下旬 巻き戻し＋摘心</strong>＝誘引した枝は針金や竹に巻きつくので、早めに巻き戻してから葉を15枚残して摘心する。
+葉が15〜20枚のうちに先端を軽く摘心すると、つるが巻かずに新梢がそろう。</li>
+<li><strong>5月上旬 摘蕾</strong>（着果させる年）＝果実1個の肥大に葉5〜6枚＝20枚の結果枝なら3〜4果。枝の中央付近を残す。</li>
+<li><strong>12月中旬〜2月上旬 剪定</strong>＝⚠️枝は節と節の間で切る（中心が髄で枯れ込む）。<strong>充実した芽の所で切る／徒長枝は切る／
+弱い下向き枝は間引く／先端の枝は少し長めに。良い結果枝が無い所は4〜5節で切り返して予備枝にする</strong>（翌年の結果母枝）。</li>
+</ul></div></details><details class='acc l2'><summary>オス（トムリ）の仕立て</summary><div class='acc-body'><p><a id="kiwi-male"></a></p>
+<ul>
+<li><strong>棚面には広げない。ただし「登り切ったら全部切る」でもない</strong>。花粉を出す枝は要る。
+雄木は棚の外で数本の枝があり、花がある程度咲けば十分。⇒ 柱に沿って上げ、棚の縁に沿って数本だけ持つ。</li>
+<li>⚠️<strong>雌木の方向へ雄木の枝を伸ばさない</strong>。<strong>2026-06-27 に「支柱高を超えたので横へ誘引」して南東3（メス）の方向へ1m 進めたが、
+これは伸ばしてはいけない向き。冬に切り、以後は棚の縁に沿う向きだけに流す</strong>。
+→ 2026-08-20 に向きだけ変えた〔本人〕。切るのは冬のまま（この時期の切除は下の禁に触れる）。</li>
+<li><strong>現況（2026-08-20 に処置済み）</strong>＝仮支柱に螺旋で巻いていた（到達高さ約180cm・つるは1本で全長3m超）ものを、
+2m の位置で摘心し、巻きを解いて麻紐で結び直した〔本人「キウイは緑色だったので2mの位置で摘心し、
+巻かれていたのを解いて麻紐で結びました」〕。⚠️2m 地点が緑色だった＝柔らかい先端なので摘心であって剪定ではない
+＝8〜9月の禁（下の項目）には触れていない。これで螺旋の2つの害（①巻いたまま太って自分を締める
+②仮支柱が笹なら抜けなくなる → <a href="#kiwi-material">材</a>）はどちらも回避した。</li>
+<li><strong>★螺旋をほどくと、つるは上に伸びる</strong>（螺旋の道のりは垂直の高さより長い）。
+1.8m より下の巻きまでほどくなら、先端は2m付近まで上がる＝摘心はそこでやることになる〔本人 2026-08-20〕。
+⇒ 順番は ほどく → 余りを見る → 摘む。先に摘心の高さを決めない。
+⚠️摘むのは先端の柔らかい所だけ。2m 付近が既に硬ければ、そこで切るのは摘心でなく剪定＝下の禁に触れるので、
+結び直すだけにして切る位置は冬に決める。</li>
+<li><strong>全長3m超のうち、主幹に要るのは地際〜1.8m だけ。残りは冬に切る</strong>〔本人 2026-08-20「冬に切ろう」〕。
+花粉枝は翌春に主幹の頭から出る新梢で作る（残す置き場＝棚の縁がまだ無い・付け替えた曲がりが残る）→ <a href="notes.html#sec-decisions" target="_blank" rel="noopener">採否</a>。</li>
+<li>⚠️<strong>切る位置は「横へ振った付け根」とは限らない</strong>。付け根はつる上の固定点なので、螺旋をほどくとその点は上がる。
+ほどいて 1.8m 付近に来ればそこで切れる（主幹がちょうど棚面に届く）が、1.8m に届かなければ切ってはいけない
+＝主幹が棚面に届かなくなる（06-27 に横へ振ったのは当時の低い支柱高を超えたためで、付け根が1.8m より下にある可能性がある）。
+⇒ 順番は 印 → ほどく → 付け根の高さを測る → 冬に切り位置を決める。摘心の高さは冬に切る側なので重要でない。
+1年目の主幹は1本しか無いので硬い区間は無理に戻さない。</li>
+<li><strong>切る時期は 花後の6〜7月と、冬（12月中旬〜2月上旬）の2回</strong>。⚠️8〜9月に強く切らない
+（遅伸びした枝は充実せず寒害を受け、そこから胴枯れ病が入る。有効な薬剤が無い病気）。</li>
+<li><strong>受粉は距離2mで足りる</strong>（近すぎることによる不利は無い）。開花が重なるかは毎年見る。</li>
+</ul></div></details><details class='acc l2'><summary>施肥 ― この畑では「入れない」側に振る</summary><div class='acc-body'><ul>
+<li><strong>一般の施肥例は 元肥11月下旬・追肥6月・追肥9月</strong>で、元肥に年間量の60%。</li>
+<li>⚠️<strong>N は入れない</strong>。この畑は N が6倍余るが、キウイでは N 過多が3つの病気の入口になる:
+①遅伸び→充実不足→寒害→胴枯れ病（有効な薬剤が無い）②灰色かび病（チッソは控えめに）③9月のチッソは禁物。
+⇒ 希釈尿の配分先に南東1〜3 を入れない。足すのは P（骨粉）と K（草木灰）と堆肥だけ。</li>
+<li><strong>灌水の方が効く</strong>＝根が浅く葉からの蒸散が多いので、7〜8月は早めの敷き草と十分な灌水
+（成木1本あたり50L を月4〜5回が目安）。枯れ草マルチはこの用途に合う。</li>
+</ul>
+<p><strong>足元（下草）の方針</strong></p>
+<ul>
+<li><strong>本命はネギ属＝「キウイが葉を落としている間に働くもの」</strong>。落葉果樹の株元は冬〜春に光が入り、夏は暗い。
+ワケギは夏6〜8月に地上部が枯れて休眠する＝キウイの葉が最も茂る時期に地上部が無い＝時間で棲み分ける。</li>
+<li>⚠️<strong>イチゴは棚の真下に入れない</strong>。収穫（6月）がキウイの新梢伸長の最盛期と正面衝突するうえ、
+棚下は風通しが落ちて灰色かび病の条件が揃う（キウイ自身も5月中旬〜6月中旬の冷涼多湿で灰色かび病が出る＝同じ条件）。
+⇒ 棚の外周（午後の光が入る帯）に置く。</li>
+<li>⚠️<strong>採苗の親株は棚の外に確保する</strong>。ランナーで太郎苗を採るのは6〜8月＝棚下が最も暗い時期で、
+日陰で採った苗は軟弱になる。畑（中庭）がイチゴ専用区画として既にあるので、祖株の役割はそちらへ移す。</li>
+<li>⚠️<strong>株元を毎年掘り返す作付けを置かない</strong>＝キウイの根は浅く、乾燥にも過湿にも弱い。
+枯れ草マルチは適合だが、イチゴの株間に厚く敷くと太郎苗が発根できない＝厚みは棚下とイチゴ帯で変える。</li>
+</ul>
+<p><strong>年内の暦</strong>: 休眠1〜3月／萌芽4月／展葉・開花5月中下旬〜6月上旬／新梢伸長5〜10月（ピーク5月下旬〜6月上旬と8月下旬〜9月）／
+果実肥大6〜7月／花芽分化7月上中旬／落葉11〜12月／剪定12月中旬〜2月上旬。</p>
+<blockquote>
+<p>一次情報:</p>
+<ul>
+<li>福井県「安価な簡易棚を利用したキウイフルーツ栽培」（令和7年度実用化技術 手引き）</li>
+</ul>
+<p>  &lt;https://www.pref.fukui.lg.jp/doc/noushi/kikaku/hukyu2_d/fil/kt.pdf&gt;
+  ＝<strong>垂直柱Φ48.6×2.5m（地中0.4m・地上2.1m）／柱間隔4m／基礎＝コンクリートブロック390×190×100 に単管を差してモルタル充填
+  （穴掘りより前の工程）／穴は45cm 掘って砕石で40cm にそろえる／据付けは四隅→水糸→外周→直線上の順／
+  直交クランプを先に柱へ付けてから水平柱を載せる（1人で施工できる）／端部に自在クランプで斜めの補強支柱／
+  棚線＝エスター線#10（φ3mm）をテンションクランプで40cm間隔・4m×4m区画に9本／
+  1a＝96㎡ の材料費 税込142,359円（うちテンションクランプ27個で38,772円＝30%）／
+  密植16㎡・樹（1a に6本）／慣行30㎡・樹／総主枝長3.5〜4.0m／側枝30cm間隔・1本1.0〜2.0m／
+  芽かきは1㎡あたり15芽／授粉樹は垂直柱に添わせて1本／開花期間は3日程度／根は浅く乾湿ともに弱い</strong></p>
+<ul>
+<li>西谷好一「家庭で育てる果樹講座⑫ キウイフルーツ」（園芸新知識 2003年12月）</li>
+</ul>
+<p>  &lt;https://www.takii.co.jp/tsk/bn/pdf/20031255.pdf&gt;
+  ＝<strong>植栽距離5×6m（家庭ではもっと狭めてよい）／T字バー仕立て 高さ1.8m・側枝1.25m／芽かき1㎡に10芽／
+  捻枝／8月下旬までに巻き戻し＋葉15枚で摘心／花芽は新梢の基から3〜8節／剪定は節と節の間・予備枝は4〜5節／
+  胴枯れ病は寒害から入る（薬剤なし）・灰色かび病はチッソ控えめ・9月のチッソは禁物</strong></p>
+<ul>
+<li>福井県（同上）主枝養成＝<strong>「４月～５月にかけて、発生した新梢で勢いのある２本を選定し、支柱に添わせながら棚面まで伸ばします」／
+「落葉後、伸ばした新梢の先端を切り返し、棚面から 20cm 程度低い位置で一文字形に整枝し、主枝を作ります。（総主枝長 3.5～4.0m）」／
+摘心＝「各新梢とも葉を１５枚残して摘心しましょう」</strong></li>
+<li>OATアグリオ「キウイフルーツ 育て方」&lt;https://media.oat-agrio.co.jp/howto/fruit/kiwifruit/&gt;
+＝<strong>「若木のうちは１本の枝が真っすぐ伸びるように新梢を巻きつかせないよう誘引し、巻き始めたら摘芯を行います」</strong></li>
+<li>サカタのタネ 園芸通信「収穫までの管理」&lt;https://sakata-tsushin.com/yomimono/howto_awano/detail_286/&gt;
+＝8の字結束の手順<strong>「茎にひもをかける→ひもを交差させて支柱へ8の字を描くように両端を持っていく→ひもを支柱に1回回す→ちょう結び」</strong></li>
+<li>全農 Apron「支柱の立て方」&lt;https://apron-web.jp/garden/saien/10503/&gt;
+＝<strong>「茎と支柱を8の字結びなどで固定しましょう」</strong>（緩さの目安＝指が1本入る）</li>
+</ul>
+</blockquote></div></details></div></details></main><footer>庭の記録から自動生成。見たい項目をタップで開いてください。</footer><a class='totop' href='#'>↑ 上へ</a><script>function openTo(hash){if(!hash)return;var el=document.getElementById(hash.slice(1));if(!el)return;var n=el;while(n){if(n.tagName==='DETAILS')n.open=true;n=n.parentElement;}if(el.tagName==='DETAILS')el.open=true;el.scrollIntoView({block:'start'});}document.addEventListener('click',function(e){var a=e.target.closest('a[href^="#sec-"]');if(!a)return;e.preventDefault();var h=a.getAttribute('href');if(history.replaceState)history.replaceState(null,'',h);openTo(h);});window.addEventListener('hashchange',function(){openTo(location.hash);});window.addEventListener('DOMContentLoaded',function(){if(location.hash)openTo(location.hash);});window.addEventListener('DOMContentLoaded',function(){var hd=document.querySelector('header.top');if(!hd)return;function u(){var h=hd.offsetHeight;if(h>innerHeight*0.5)h=0;document.documentElement.style.setProperty('--bar',h+'px');var q=document.querySelector('nav.qnav');if(q&&h&&getComputedStyle(q).position==='sticky')h+=q.offsetHeight;document.documentElement.style.setProperty('--hdr',h+'px');}addEventListener('resize',u);u();});window.addEventListener('DOMContentLoaded',function(){var b=document.querySelector('.menu-btn'),d=document.getElementById('site-menu');if(!b||!d)return;var bg=[].slice.call(document.body.children).filter(function(x){return x!==d&&x.tagName!=='SCRIPT';});var FOC='a[href],button:not([disabled]),[tabindex]:not([tabindex="-1"])';function set(o,ret){d.hidden=!o;b.setAttribute('aria-expanded',o?'true':'false');document.body.classList.toggle('menu-open',o);bg.forEach(function(x){if(o)x.setAttribute('inert','');else x.removeAttribute('inert');});if(o){var c=d.querySelector('.drawer-close')||d.querySelector(FOC);if(c)c.focus();}else if(ret!==false){b.focus({preventScroll:true});}}b.addEventListener('click',function(){set(d.hidden);});d.addEventListener('click',function(e){if(e.target.closest('a'))set(false,false);else if(e.target.closest('.drawer-close')||e.target.classList.contains('drawer-backdrop'))set(false);});document.addEventListener('keydown',function(e){if(d.hidden)return;if(e.key==='Escape'){set(false);return;}if(e.key!=='Tab')return;var f=[].slice.call(d.querySelectorAll(FOC)).filter(function(x){return x.offsetParent!==null;});if(!f.length)return;var a=document.activeElement;if(e.shiftKey&&(a===f[0]||!d.contains(a))){e.preventDefault();f[f.length-1].focus();}else if(!e.shiftKey&&(a===f[f.length-1]||!d.contains(a))){e.preventDefault();f[0].focus();}});var mq=window.matchMedia('(min-width: 992px)');function onmq(){if(mq.matches&&!d.hidden)set(false,false);}if(mq.addEventListener)mq.addEventListener('change',onmq);else if(mq.addListener)mq.addListener(onmq);});window.addEventListener('DOMContentLoaded',function(){var q=document.querySelector('nav.qnav');if(!q)return;var ls=[].slice.call(q.querySelectorAll('a[href^="#"]'));var secs=[].slice.call(document.querySelectorAll('main > details.acc.sec, main > .pmbok-signal'));var t=null;function upd(){t=null;var line=q.getBoundingClientRect().bottom+16,cur=null;for(var i=0;i<secs.length;i++){if(secs[i].getBoundingClientRect().top<=line)cur=secs[i].id;}if(innerHeight+scrollY>=document.documentElement.scrollHeight-2&&ls.length)cur=ls[ls.length-1].getAttribute('href').slice(1);ls.forEach(function(a){if(cur&&a.getAttribute('href')==='#'+cur)a.setAttribute('aria-current','location');else a.removeAttribute('aria-current');});}function sch(){if(t)return;t=setTimeout(upd,60);}addEventListener('scroll',sch,{passive:true});addEventListener('resize',sch);upd();});window.addEventListener('DOMContentLoaded',function(){document.querySelectorAll('main pre').forEach(function(pre){var code=pre.querySelector('code');var text=(code||pre).innerText;var b=document.createElement('button');b.className='copy-btn';b.type='button';b.textContent='コピー';b.addEventListener('click',function(ev){ev.stopPropagation();ev.preventDefault();var done=function(f){b.textContent=f?'コピーしました':'コピー失敗';setTimeout(function(){b.textContent='コピー';},1500);};var fb=function(){try{var t=document.createElement('textarea');t.value=text;t.setAttribute('readonly','');t.style.position='fixed';t.style.top='0';t.style.left='0';t.style.opacity='0';document.body.appendChild(t);t.focus();t.select();t.setSelectionRange(0,text.length);var ok=document.execCommand('copy');document.body.removeChild(t);done(ok);}catch(e){done(false);}};if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(function(){done(true);},fb);}else{fb();}});pre.appendChild(b);});});(function(){var ok=!!(window.HTMLDialogElement&&('showModal' in HTMLDialogElement.prototype));var dd=null,cur=null,opener=null,hash0=null;function build(){dd=document.createElement('dialog');dd.className='dd';dd.setAttribute('aria-labelledby','dd-title');dd.innerHTML='<div class="dd-hd"><div class="dd-t"><div class="dd-crumb"></div><h3 class="dd-title" id="dd-title"></h3></div>'+'<button type="button" class="dd-x" aria-label="閉じる">×</button></div><div class="dd-body"></div>'+'<div class="dd-ft"><button type="button" class="dd-close">閉じる</button></div>';document.body.appendChild(dd);dd.addEventListener('click',function(e){if(e.target===dd||e.target.closest('.dd-x')||e.target.closest('.dd-close'))close();});dd.addEventListener('cancel',function(e){e.preventDefault();close();});}function restore(){if(!cur)return;var host=dd.querySelector('.dd-body'),c=host.firstElementChild;if(c)cur.appendChild(c);cur=null;}function open(src,b){if(!dd)build();if(cur&&cur!==src)restore();var host=dd.querySelector('.dd-body');if(cur!==src){cur=src;dd.querySelector('.dd-crumb').textContent=src.getAttribute('data-crumb')||'';dd.querySelector('.dd-title').textContent=src.getAttribute('data-title')||'';var c=src.firstElementChild;if(c)host.appendChild(c);host.scrollTop=0;}opener=b;dd.classList.toggle('dd-note',!!(b&&b.classList.contains('bd-note')));document.body.classList.add('dd-open');if(!dd.open){hash0=location.hash;dd.showModal();}var row=src.getAttribute('data-row');if(row&&history.replaceState)history.replaceState(null,'','#'+row);}function close(){restore();if(dd&&dd.open)dd.close();document.body.classList.remove('dd-open');if(history.replaceState&&hash0!==null){history.replaceState(null,'',hash0||(location.pathname+location.search));hash0=null;}try{if(opener)opener.focus({preventScroll:true});}catch(e){}opener=null;}document.addEventListener('click',function(e){var b=e.target.closest('.bd-more');if(!b)return;var src=document.getElementById('bdd-'+b.getAttribute('data-bd'));if(!src)return;if(!ok){src.hidden=!src.hidden;return;}open(src,b);});function flash(b,t){var o=b.getAttribute('data-label')||b.textContent;b.setAttribute('data-label',o);b.textContent=t;b.classList.add('is-done');setTimeout(function(){b.textContent=o;b.classList.remove('is-done');},1400);}function fallback(b,t){try{var ta=document.createElement('textarea');ta.value=t;ta.setAttribute('readonly','');ta.style.position='fixed';ta.style.top='-1000px';document.body.appendChild(ta);ta.select();var r=document.execCommand('copy');document.body.removeChild(ta);flash(b,r?'コピー済':'コピー不可');}catch(err){flash(b,'コピー不可');}}document.addEventListener('click',function(e){var b=e.target.closest('.bd-copy');if(!b)return;var t=b.getAttribute('data-copy')||'';if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(t).then(function(){flash(b,'コピー済');},function(){fallback(b,t);});}else{fallback(b,t);}});})();</script></body></html>
